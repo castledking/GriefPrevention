@@ -40,9 +40,9 @@ GriefPrevention Legacy is the "friendly" name of GriefPrevention version 16. Gri
 
 GriefPrevention Legacy's development exists in the `legacy/v16` branch; be sure to target this branch if you intend to create any pull requests for GriefPrevention Legacy.
 
-## Alpha Testing
+## Version 17 and above
 
-Newer major versions of GriefPrevention are developed on the `master` branch. These new versions contain **breaking changes.** Please **do not** use these versions of GriefPrevention on production servers! Testing for newer major versions of GriefPrevention is available in the [Alpha Releases forum category.](https://github.com/GriefPrevention/GriefPrevention/discussions/categories/alpha-releases)
+Newer major versions of GriefPrevention are developed on the `master` branch. These new versions contain **breaking changes.** Please **do not** use these versions of GriefPrevention on production servers!
 
 ---
 
