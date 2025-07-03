@@ -36,11 +36,13 @@ Other server implementations of the Bukkit API _should_ work, but are untested.
 
 ## GriefPrevention Legacy
 
-GriefPrevention Legacy is the "friendly" name of GriefPrevention version 16. GriefPrevention version 16 will continue to be officially supported with new updates and releases. GriefPrevention Legacy's development exists in the `legacy/v16` branch; be sure to target this branch if you intend to create any pull requests for GriefPrevention Legacy.
+GriefPrevention Legacy is the "friendly" name of GriefPrevention version 16. GriefPrevention version 16 will continue to be officially supported with new updates and releases, and is currently the version we recommend for use on production servers.
+
+GriefPrevention Legacy's development exists in the `legacy/v16` branch; be sure to target this branch if you intend to create any pull requests for GriefPrevention Legacy.
 
 ## Alpha Testing
 
-Newer major versions of GriefPrevention are developed on the `master` branch. Testing for newer major versions of GriefPrevention is available in the [Alpha Releases forum category.](https://github.com/GriefPrevention/GriefPrevention/discussions/categories/alpha-releases)
+Newer major versions of GriefPrevention are developed on the `master` branch. These new versions contain **breaking changes.** Please **do not** use these versions of GriefPrevention on production servers! Testing for newer major versions of GriefPrevention is available in the [Alpha Releases forum category.](https://github.com/GriefPrevention/GriefPrevention/discussions/categories/alpha-releases)
 
 ---
 
