@@ -45,6 +45,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 //represents a player claim
 //creating an instance doesn't make an effective claim
@@ -52,9 +53,12 @@ import java.util.function.Supplier;
 public class Claim
 {
     //two locations, which together define the boundaries of the claim
-    //note that the upper Y value is always ignored, because claims ALWAYS extend up to the sky
+    //for subdivisions, if is3D is true, the Y boundaries are respected
     Location lesserBoundaryCorner;
     Location greaterBoundaryCorner;
+    
+    //whether this claim respects Y boundaries (for 3D subdivisions)
+    private boolean is3D = false;
 
     //modification date.  this comes from the file timestamp during load, and is updated with runtime changes
     public Date modifiedDate;
@@ -94,6 +98,16 @@ public class Claim
     //following a siege, buttons/levers are unlocked temporarily.  this represents that state
     public boolean doorsOpen = false;
 
+    //set whether this claim should respect Y boundaries (for 3D subdivisions)
+    public void set3D(boolean is3D) {
+        this.is3D = is3D;
+    }
+    
+    //check if this is a 3D claim (respects Y boundaries)
+    public boolean is3D() {
+        return this.is3D;
+    }
+    
     //whether or not this is an administrative claim
     //administrative claims are created and maintained by players with the griefprevention.adminclaims permission.
     public boolean isAdminClaim()
@@ -115,13 +129,16 @@ public class Claim
     }
 
     //main constructor.  note that only creating a claim instance does nothing - a claim must be added to the data store to be effective
-    Claim(Location lesserBoundaryCorner, Location greaterBoundaryCorner, UUID ownerID, List<String> builderIDs, List<String> containerIDs, List<String> accessorIDs, List<String> managerIDs, boolean inheritNothing, Long id)
+    Claim(Location lesserBoundaryCorner, Location greaterBoundaryCorner, UUID ownerID, List<String> builderIDs, List<String> containerIDs, List<String> accessorIDs, List<String> managerIDs, boolean inheritNothing, Long id, boolean is3D)
     {
         //modification date
         this.modifiedDate = Calendar.getInstance().getTime();
 
         //id
         this.id = id;
+
+        //set 3D flag early so boundary logic can use it
+        this.is3D = is3D;
 
         //store corners
         this.lesserBoundaryCorner = lesserBoundaryCorner.clone();
@@ -142,7 +159,10 @@ public class Claim
             this.greaterBoundaryCorner.setZ(z1);
             this.lesserBoundaryCorner.setZ(z2);
         }
-        this.lesserBoundaryCorner.setY(Math.min(this.lesserBoundaryCorner.getBlockY(), this.greaterBoundaryCorner.getBlockY()));
+        // For 3D claims, preserve original Y boundaries exactly as defined
+        if (!this.is3D) {
+            this.lesserBoundaryCorner.setY(Math.min(this.lesserBoundaryCorner.getBlockY(), this.greaterBoundaryCorner.getBlockY()));
+        }
 
         //owner
         this.ownerID = ownerID;
@@ -176,13 +196,13 @@ public class Claim
 
     Claim(Location lesserBoundaryCorner, Location greaterBoundaryCorner, UUID ownerID, List<String> builderIDs, List<String> containerIDs, List<String> accessorIDs, List<String> managerIDs, Long id)
     {
-        this(lesserBoundaryCorner, greaterBoundaryCorner, ownerID, builderIDs, containerIDs, accessorIDs, managerIDs, false, id);
+        this(lesserBoundaryCorner, greaterBoundaryCorner, ownerID, builderIDs, containerIDs, accessorIDs, managerIDs, false, id, false);
     }
 
     //produces a copy of a claim.
     public Claim(Claim claim) {
         this.modifiedDate = claim.modifiedDate;
-        this.lesserBoundaryCorner = claim.greaterBoundaryCorner.clone();
+        this.lesserBoundaryCorner = claim.lesserBoundaryCorner.clone();
         this.greaterBoundaryCorner = claim.greaterBoundaryCorner.clone();
         this.id = claim.id;
         this.ownerID = claim.ownerID;
@@ -194,6 +214,7 @@ public class Claim
         this.inheritNothing = claim.inheritNothing;
         this.children = new ArrayList<>(claim.children);
         this.doorsOpen = claim.doorsOpen;
+        this.is3D = claim.is3D;
     }
 
     //measurements.  all measurements are in blocks
@@ -375,21 +396,21 @@ public class Claim
     }
 
     /**
-     * Check whether a Player has a certain level of trust. For internal use; allows changing default message.
+     * Check whether a Player has a certain level of trust with a custom denial message.
      *
      * @param player the Player being checked for permissions
      * @param permission the ClaimPermission level required
      * @param event the Event triggering the permission check
-     * @param denialOverride a message overriding the default denial for clarity
+     * @param denialOverride a custom denial message supplier, or null to use default
      * @return the denial message or null if permission is granted
      */
-    @Nullable Supplier<String> checkPermission(
+    public @Nullable Supplier<String> checkPermission(
             @NotNull Player player,
             @NotNull ClaimPermission permission,
             @Nullable Event event,
             @Nullable Supplier<String> denialOverride)
     {
-        return callPermissionCheck(new ClaimPermissionCheckEvent(player, this, permission, event), denialOverride);
+        return checkPermission(player.getUniqueId(), permission, event, denialOverride);
     }
 
     /**
@@ -398,14 +419,32 @@ public class Claim
      * @param uuid the UUID being checked for permissions
      * @param permission the ClaimPermission level required
      * @param event the Event triggering the permission check
-     * @return the denial reason or null if permission is granted
+     * @return the denial message or null if permission is granted
      */
     public @Nullable Supplier<String> checkPermission(
             @NotNull UUID uuid,
             @NotNull ClaimPermission permission,
             @Nullable Event event)
     {
-        return callPermissionCheck(new ClaimPermissionCheckEvent(uuid, this, permission, event), null);
+        return checkPermission(uuid, permission, event, null);
+    }
+
+    /**
+     * Check whether a UUID has a certain level of trust with a custom denial message.
+     *
+     * @param uuid the UUID being checked for permissions
+     * @param permission the ClaimPermission level required
+     * @param event the Event triggering the permission check
+     * @param denialOverride a custom denial message supplier, or null to use default
+     * @return the denial message or null if permission is granted
+     */
+    public @Nullable Supplier<String> checkPermission(
+        @NotNull UUID uuid,
+        @NotNull ClaimPermission permission,
+        @Nullable Event event,
+        @Nullable Supplier<String> denialOverride)
+    {
+        return callPermissionCheck(new ClaimPermissionCheckEvent(uuid, this, permission, event), denialOverride);
     }
 
     /**
@@ -422,15 +461,14 @@ public class Claim
         // Set denial message (if any) using default behavior.
         Supplier<String> defaultDenial = getDefaultDenial(event.getCheckedPlayer(), event.getCheckedUUID(),
                 event.getRequiredPermission(), event.getTriggeringEvent());
+        
         // If permission is denied and a clarifying override is provided, use override.
         if (defaultDenial != null && denialOverride != null) {
             defaultDenial = denialOverride;
         }
 
         event.setDenialReason(defaultDenial);
-
         Bukkit.getPluginManager().callEvent(event);
-
         return event.getDenialReason();
     }
 
@@ -691,54 +729,52 @@ public class Claim
         }
         return this.ownerID;
     }
+    public boolean contains(Location location, boolean ignoreHeight, boolean excludeSubdivisions) {
+        if (!Objects.equals(location.getWorld(), this.lesserBoundaryCorner.getWorld())) {
+            return false;
+        }
 
-    //whether or not a location is in a claim
-    //ignoreHeight = true means location UNDER the claim will return TRUE
-    //excludeSubdivisions = true means that locations inside subdivisions of the claim will return FALSE
-    public boolean contains(Location location, boolean ignoreHeight, boolean excludeSubdivisions)
-    {
-        //not in the same world implies false
-        if (!Objects.equals(location.getWorld(), this.lesserBoundaryCorner.getWorld())) return false;
-
-        BoundingBox boundingBox = new BoundingBox(this);
         int x = location.getBlockX();
+        int y = location.getBlockY();
         int z = location.getBlockZ();
 
-        // If we're ignoring height, use 2D containment check.
-        if (ignoreHeight && !boundingBox.contains2d(x, z))
-        {
-            return false;
-        }
-        // Otherwise use full containment check.
-        else if (!ignoreHeight && !boundingBox.contains(x, location.getBlockY(), z))
-        {
+        int minX = Math.min(lesserBoundaryCorner.getBlockX(), greaterBoundaryCorner.getBlockX());
+        int maxX = Math.max(lesserBoundaryCorner.getBlockX(), greaterBoundaryCorner.getBlockX());
+        int minZ = Math.min(lesserBoundaryCorner.getBlockZ(), greaterBoundaryCorner.getBlockZ());
+        int maxZ = Math.max(lesserBoundaryCorner.getBlockZ(), greaterBoundaryCorner.getBlockZ());
+
+        if (x < minX || x > maxX || z < minZ || z > maxZ) {
             return false;
         }
 
-        //additional check for subdivisions
-        //you're only in a subdivision when you're also in its parent claim
-        //NOTE: if a player creates subdivions then resizes the parent claim, it's possible that
-        //a subdivision can reach outside of its parent's boundaries.  so this check is important!
-        if (this.parent != null)
-        {
-            return this.parent.contains(location, ignoreHeight, false);
-        }
-
-        //code to exclude subdivisions in this check
-        else if (excludeSubdivisions)
-        {
-            //search all subdivisions to see if the location is in any of them
-            for (Claim child : this.children)
-            {
-                //if we find such a subdivision, return false
-                if (child.contains(location, ignoreHeight, true))
-                {
+        if (!ignoreHeight) {
+            if (this.is3D) {
+                int minY = Math.min(lesserBoundaryCorner.getBlockY(), greaterBoundaryCorner.getBlockY());
+                int maxY = Math.max(lesserBoundaryCorner.getBlockY(), greaterBoundaryCorner.getBlockY());
+                if (y < minY || y > maxY) {
+                    return false;
+                }
+            } else if (this.parent == null) { // Only top-level claims span full height
+                int worldMinY = location.getWorld().getMinHeight();
+                int worldMaxY = location.getWorld().getMaxHeight();
+                if (y < worldMinY || y > worldMaxY) {
                     return false;
                 }
             }
         }
-
-        //otherwise yes
+    
+        // Handle subdivision exclusion - properly respect 3D boundaries
+        if (excludeSubdivisions && !this.children.isEmpty()) {
+            for (Claim child : this.children) {
+                // For 3D subdivisions, always check height boundaries
+                boolean childContains = child.contains(location, child.is3D ? false : ignoreHeight, false);
+                
+                if (childContains) {
+                    return false;
+                }
+            }
+        }
+        
         return true;
     }
 

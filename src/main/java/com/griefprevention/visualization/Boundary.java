@@ -33,7 +33,26 @@ public record Boundary(
      */
     public Boundary(@NotNull Claim claim, @NotNull VisualizationType type)
     {
-        this(new BoundingBox(claim), type, claim);
+        this(createBoundingBox(claim), type, claim);
+    }
+    
+    /**
+     * Create a BoundingBox for a claim, respecting 3D boundaries if applicable.
+     *
+     * @param claim the claim to create a bounding box for
+     * @return the bounding box
+     */
+    private static @NotNull BoundingBox createBoundingBox(@NotNull Claim claim) {
+        // For 3D subdivisions, use the actual Y coordinates
+        if (claim.is3D() || (claim.parent != null && claim.parent.is3D())) {
+            Claim parentClaim = claim.parent != null ? claim.parent : claim;
+            return new BoundingBox(
+                claim.getLesserBoundaryCorner(),
+                claim.getGreaterBoundaryCorner()
+            );
+        }
+        // For regular claims, use the default behavior (full height)
+        return new BoundingBox(claim);
     }
 
     /**

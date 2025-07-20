@@ -215,12 +215,24 @@ public abstract class BoundaryVisualization
         // Correct visualization type for claim type for simplicity.
         if (type == VisualizationType.CLAIM && claim.isAdminClaim()) type = VisualizationType.ADMIN_CLAIM;
 
-        // Gather all boundaries. It's important that children override parent so
+        // For 3D claims, only visualize the specific claim being looked at
+        if (claim.is3D()) {
+            return Set.of(new Boundary(claim, type));
+        }
+
+        // For non-3D claims, gather all boundaries. It's important that children override parent so
         // that users can always find children, no matter how oddly sized or positioned.
-        return Stream.concat(
-                Stream.of(new Boundary(claim, type)),
-                claim.children.stream().map(child -> new Boundary(child, VisualizationType.SUBDIVISION)))
-                .collect(Collectors.toSet());
+        // For 3D children, we still want to show them with their actual boundaries
+        Set<Boundary> boundaries = new HashSet<>();
+        boundaries.add(new Boundary(claim, type));
+        
+        // Add all children with their appropriate visualization types
+        claim.children.forEach(child -> {
+            VisualizationType childType = child.is3D() ? VisualizationType.SUBDIVISION_3D : VisualizationType.SUBDIVISION;
+            boundaries.add(new Boundary(child, childType));
+        });
+        
+        return boundaries;
     }
 
     /**

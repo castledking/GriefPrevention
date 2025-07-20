@@ -521,8 +521,11 @@ public class FlatFileDataStore extends DataStore
 
         out_parentID.add(yaml.getLong("Parent Claim ID", -1L));
 
+        // Add is3D flag
+        boolean is3D = yaml.getBoolean("Is3D", false);
+
         //instantiate
-        claim = new Claim(lesserBoundaryCorner, greaterBoundaryCorner, ownerID, builders, containers, accessors, managers, inheritNothing, claimID);
+        claim = new Claim(lesserBoundaryCorner, greaterBoundaryCorner, ownerID, builders, containers, accessors, managers, inheritNothing, claimID, is3D);
         claim.modifiedDate = new Date(lastModifiedDate);
         claim.id = claimID;
 
@@ -562,6 +565,9 @@ public class FlatFileDataStore extends DataStore
         yaml.set("Parent Claim ID", parentID);
 
         yaml.set("inheritNothing", claim.getSubclaimRestrictions());
+
+        // Add is3D flag
+        yaml.set("Is3D", claim.is3D());
 
         return yaml.saveToString();
     }

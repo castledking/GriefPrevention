@@ -717,36 +717,66 @@ public abstract class DataStore
      */
     synchronized public Claim getClaimAt(Location location, boolean ignoreHeight, boolean ignoreSubclaims, Claim cachedClaim)
     {
-        //check cachedClaim guess first.  if it's in the datastore and the location is inside it, we're done
-        if (cachedClaim != null && cachedClaim.inDataStore && cachedClaim.contains(location, ignoreHeight, !ignoreSubclaims))
-            return cachedClaim;
+        // Check cached claim first
+        if (cachedClaim != null && cachedClaim.inDataStore) {
+            if (cachedClaim.contains(location, !cachedClaim.is3D() ? ignoreHeight : false, !ignoreSubclaims)) {
+                // For 3D subdivisions, check Y bounds explicitly and defer to parent if outside
+                if (cachedClaim.is3D() && !ignoreHeight) {
+                    int y = location.getBlockY();
+                    int minY = Math.min(cachedClaim.lesserBoundaryCorner.getBlockY(), cachedClaim.greaterBoundaryCorner.getBlockY());
+                    int maxY = Math.max(cachedClaim.lesserBoundaryCorner.getBlockY(), cachedClaim.greaterBoundaryCorner.getBlockY());
+                    if (y < minY || y > maxY) {
+                        if (cachedClaim.parent != null) {
+                            return cachedClaim.parent;
+                        }
+                    }
+                }
+                return cachedClaim;
+            }
+        }
 
-        //find a top level claim
+        // Find a top-level claim
         Long chunkID = getChunkHash(location);
         ArrayList<Claim> claimsInChunk = this.chunksToClaimsMap.get(chunkID);
-        if (claimsInChunk == null) return null;
+        if (claimsInChunk == null) {
+            return null;
+        }
 
         for (Claim claim : claimsInChunk)
         {
             if (claim.inDataStore && claim.contains(location, ignoreHeight, false))
             {
-                // If ignoring subclaims, claim is a match.
-                if (ignoreSubclaims) return claim;
+                if (ignoreSubclaims) {
+                    return claim;
+                }
 
-                //when we find a top level claim, if the location is in one of its subdivisions,
-                //return the SUBDIVISION, not the top level claim
+                // Check subdivisions - enforce strict 3D boundaries
                 for (int j = 0; j < claim.children.size(); j++)
                 {
                     Claim subdivision = claim.children.get(j);
-                    if (subdivision.inDataStore && subdivision.contains(location, ignoreHeight, false))
-                        return subdivision;
+                    if (subdivision.inDataStore) {
+                        if (subdivision.is3D()) {
+                            // For 3D subdivisions, always check height boundaries strictly
+                            if (subdivision.contains(location, false, false)) {
+                                return subdivision;
+                            }
+                            // If location is within X/Z bounds but outside Y bounds, return parent
+                            if (!ignoreHeight && subdivision.contains(location, true, false)) {
+                                // Location is in the X/Z footprint but outside Y bounds
+                                return claim;  // Return parent claim
+                            }
+                        } else {
+                            // For regular subdivisions, use normal height checking
+                            if (subdivision.contains(location, ignoreHeight, false)) {
+                                return subdivision;
+                            }
+                        }
+                    }
                 }
-
                 return claim;
             }
         }
 
-        //if no claim found, return null
         return null;
     }
 
@@ -910,7 +940,10 @@ public abstract class DataStore
                 result.claim = parent;
                 return result;
             }
-            smally = sanitizeClaimDepth(parent, smally);
+            // Don't sanitize depth for 3D subdivisions - preserve exact boundaries
+            if (bigy == smally) { // This indicates it's likely not a 3D subdivision
+                smally = sanitizeClaimDepth(parent, smally);
+            }
         }
 
         //claims can't be made outside the world border
@@ -1074,6 +1107,11 @@ public abstract class DataStore
     private int sanitizeClaimDepth(Claim claim, int newDepth) {
         if (claim.parent != null) claim = claim.parent;
 
+        // For 3D claims, don't modify their depth - preserve exact boundaries
+        if (claim.is3D()) {
+            return newDepth;
+        }
+
         // Get the old depth including the depth of the lowest subdivision.
         int oldDepth = Math.min(
                 claim.getLesserBoundaryCorner().getBlockY(),
@@ -1103,8 +1141,11 @@ public abstract class DataStore
         final int depth = sanitizeClaimDepth(claim, newDepth);
 
         Stream.concat(Stream.of(claim), claim.children.stream()).forEach(localClaim -> {
-            localClaim.lesserBoundaryCorner.setY(depth);
-            localClaim.greaterBoundaryCorner.setY(Math.max(localClaim.greaterBoundaryCorner.getBlockY(), depth));
+            // Skip 3D subdivisions - preserve their exact boundaries
+            if (!localClaim.is3D()) {
+                localClaim.lesserBoundaryCorner.setY(depth);
+                localClaim.greaterBoundaryCorner.setY(Math.max(localClaim.greaterBoundaryCorner.getBlockY(), depth));
+            }
             this.saveClaim(localClaim);
         });
     }

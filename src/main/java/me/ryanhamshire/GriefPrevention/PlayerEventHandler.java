@@ -2003,15 +2003,36 @@ class PlayerEventHandler implements Listener
                                 return;
                             }
 
+                            // Calculate height difference between the two selected points
+                            int y1 = playerData.lastShovelLocation.getBlockY();
+                            int y2 = clickedBlock.getY();
+                            int minY, maxY;
+
+                            // If height difference is 3 or more blocks, use the actual Y coordinates
+                            // Otherwise, use the default behavior
+                            if (Math.abs(y2 - y1) >= 3) {
+                                minY = Math.min(y1, y2);
+                                maxY = Math.max(y1, y2);
+                            } else {
+                                // Use the current behavior
+                                minY = Math.min(y1, y2) - instance.config_claims_claimsExtendIntoGroundDistance;
+                                maxY = player.getWorld().getMaxHeight();
+                            }
+
                             //try to create a new claim (will return null if this subdivision overlaps another)
                             CreateClaimResult result = this.dataStore.createClaim(
                                     player.getWorld(),
                                     playerData.lastShovelLocation.getBlockX(), clickedBlock.getX(),
-                                    playerData.lastShovelLocation.getBlockY() - instance.config_claims_claimsExtendIntoGroundDistance, clickedBlock.getY() - instance.config_claims_claimsExtendIntoGroundDistance,
+                                    minY, maxY,
                                     playerData.lastShovelLocation.getBlockZ(), clickedBlock.getZ(),
                                     null,  //owner is not used for subdivisions
                                     playerData.claimSubdividing,
                                     null, player);
+
+                            // If this is a 3D subdivision (height >= 3), set the is3D flag
+                            if (result.succeeded && result.claim != null && (maxY - minY + 1) >= 3) {
+                                result.claim.set3D(true);
+                            }
 
                             //if it didn't succeed, tell the player why
                             if (!result.succeeded || result.claim == null)
