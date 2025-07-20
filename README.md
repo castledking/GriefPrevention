@@ -5,7 +5,7 @@
 <h1 align="center">The self-service anti-griefing plugin for Minecraft servers since 2011</h1>
 
 <p align="center">
-<a href="https://github.com/GriefPrevention/GriefPrevention/releases/"><img alt="Downloads" src="https://img.shields.io/badge/Downloads-green" height="70px"></a>
+<a href="https://github.com/castledking/GriefPrevention/releases/tag/17.0.0"><img alt="Downloads" src="https://img.shields.io/badge/Downloads-green" height="70px"></a>
 <a href="https://r.griefprevention.com/docs"><img alt="Docs" src="https://img.shields.io/badge/Docs-gray?logo=readthedocs&logoColor=white" height="70px"></a>
 <a href="#support"><img alt="Get Help" src="https://img.shields.io/badge/Get%20Help-yellow?logo=amazoncloudwatch&logoColor=white" height="70px"></a>
 
@@ -23,7 +23,7 @@ Stop _responding_ to grief and prevent it instead. GriefPrevention stops grief b
 Other server implementations of the Bukkit API _should_ work, but are untested.
 
 ## Download
-### [Download the GriefPrevention.jar plugin here.](https://github.com/GriefPrevention/GriefPrevention/releases/)
+### [Download the GriefPrevention.jar plugin here.](https://github.com/castledking/GriefPrevention/releases/tag/17.0.0)
 
 ## Addons
 ### [Addons](https://r.griefprevention.com/addons) provide additional features to GriefPrevention. Some of these addons are listed in [GitHub Discussions](https://r.griefprevention.com/addons)
