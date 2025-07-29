@@ -4,6 +4,9 @@ import com.griefprevention.util.IntVector;
 import com.griefprevention.visualization.BlockBoundaryVisualization;
 import com.griefprevention.visualization.Boundary;
 import com.griefprevention.visualization.BoundaryVisualization;
+import com.griefprevention.visualization.VisualizationType;
+import me.ryanhamshire.GriefPrevention.Claim;
+import me.ryanhamshire.GriefPrevention.util.BoundingBox;
 import org.bukkit.Material;
 import org.bukkit.Tag;
 import org.bukkit.World;
@@ -11,6 +14,7 @@ import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Lightable;
+import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.function.Consumer;
@@ -43,7 +47,8 @@ public class FakeBlockVisualization extends BlockBoundaryVisualization
     {
         return addBlockElement(switch (boundary.type())
         {
-            case SUBDIVISION, SUBDIVISION_3D -> Material.IRON_BLOCK.createBlockData();
+            case SUBDIVISION -> Material.IRON_BLOCK.createBlockData();
+            case SUBDIVISION_3D -> Material.EMERALD_BLOCK.createBlockData(); // Distinctive green corners for 3D subdivisions
             case INITIALIZE_ZONE -> Material.DIAMOND_BLOCK.createBlockData();
             case CONFLICT_ZONE -> {
                 BlockData fakeData = Material.REDSTONE_ORE.createBlockData();
@@ -62,11 +67,167 @@ public class FakeBlockVisualization extends BlockBoundaryVisualization
         return addBlockElement(switch (boundary.type())
         {
             case ADMIN_CLAIM -> Material.PUMPKIN.createBlockData();
-            case SUBDIVISION, SUBDIVISION_3D -> Material.WHITE_WOOL.createBlockData();
+            case SUBDIVISION -> Material.WHITE_WOOL.createBlockData();
+            case SUBDIVISION_3D -> Material.LIME_WOOL.createBlockData(); // Distinctive lime green sides for 3D subdivisions
             case INITIALIZE_ZONE -> Material.DIAMOND_BLOCK.createBlockData();
             case CONFLICT_ZONE -> Material.NETHERRACK.createBlockData();
             default -> Material.GOLD_BLOCK.createBlockData();
         });
+    }
+
+    @Override
+    protected void draw(@NotNull Player player, @NotNull Boundary boundary)
+    {
+        // For 3D subdivisions, we need to respect Y boundaries and limit visualization
+        if (boundary.type() == VisualizationType.SUBDIVISION_3D && boundary.claim() != null)
+        {
+            drawRespectingYBoundaries(player, boundary);
+        }
+        else
+        {
+            // Use the default implementation for all other boundary types
+            super.draw(player, boundary);
+        }
+    }
+
+    /**
+     * Draw a 3D subdivision boundary while respecting Y boundaries and limiting visualization
+     * to only one block above and below the subclaim's Y limits.
+     */
+    private void drawRespectingYBoundaries(@NotNull Player player, @NotNull Boundary boundary)
+    {
+        BoundingBox area = boundary.bounds();
+        Claim claim = boundary.claim();
+        
+        if (claim == null || !claim.is3D()) 
+        {
+            // Fallback to default behavior if claim is null or not 3D
+            super.draw(player, boundary);
+            return;
+        }
+
+        // Get the Y boundaries of the 3D subclaim
+        int claimMinY = area.getMinY();
+        int claimMaxY = area.getMaxY();
+        
+        // Allow visualization one block above and below the claim boundaries
+        int visualizationMinY = Math.max(claimMinY - 1, world.getMinHeight());
+        int visualizationMaxY = Math.min(claimMaxY + 1, world.getMaxHeight());
+        
+        // Determine the best height for visualization within the allowed range
+        int playerY = player.getEyeLocation().getBlockY();
+        int visualizationHeight;
+        
+        if (playerY >= visualizationMinY && playerY <= visualizationMaxY)
+        {
+            // Player is within or near the 3D claim, use their Y level
+            visualizationHeight = playerY;
+        }
+        else if (playerY < visualizationMinY)
+        {
+            // Player is below the claim, show at the bottom boundary
+            visualizationHeight = visualizationMinY;
+        }
+        else
+        {
+            // Player is above the claim, show at the top boundary
+            visualizationHeight = visualizationMaxY;
+        }
+
+        // Replicate display zone logic (default values: step=10, displayZoneRadius=75)
+        final int step = 10;
+        final int displayZoneRadius = 75;
+        IntVector visualizeFrom = new IntVector(player.getEyeLocation().getBlockX(), 
+                                               player.getEyeLocation().getBlockY(), 
+                                               player.getEyeLocation().getBlockZ());
+        BoundingBox displayZoneArea = new BoundingBox(
+                visualizeFrom.add(-displayZoneRadius, -displayZoneRadius, -displayZoneRadius),
+                visualizeFrom.add(displayZoneRadius, displayZoneRadius, displayZoneRadius));
+        
+        // Trim to area - allows for simplified display containment check later.
+        BoundingBox displayZone = displayZoneArea.intersection(area);
+
+        // If area is not inside display zone, there is nothing to display.
+        if (displayZone == null) return;
+
+        Consumer<@NotNull IntVector> addCorner = addCornerElements(boundary);
+        Consumer<@NotNull IntVector> addSide = addSideElements(boundary);
+
+        // North and south boundaries
+        for (int x = Math.max(area.getMinX() + step, displayZone.getMinX()); x < area.getMaxX() - step / 2 && x < displayZone.getMaxX(); x += step)
+        {
+            addDisplayed3D(displayZone, new IntVector(x, visualizationHeight, area.getMaxZ()), addSide);
+            addDisplayed3D(displayZone, new IntVector(x, visualizationHeight, area.getMinZ()), addSide);
+        }
+        // First and last step are always directly adjacent to corners
+        if (area.getLength() > 2)
+        {
+            addDisplayed3D(displayZone, new IntVector(area.getMinX() + 1, visualizationHeight, area.getMaxZ()), addSide);
+            addDisplayed3D(displayZone, new IntVector(area.getMinX() + 1, visualizationHeight, area.getMinZ()), addSide);
+            addDisplayed3D(displayZone, new IntVector(area.getMaxX() - 1, visualizationHeight, area.getMaxZ()), addSide);
+            addDisplayed3D(displayZone, new IntVector(area.getMaxX() - 1, visualizationHeight, area.getMinZ()), addSide);
+        }
+
+        // East and west boundaries
+        for (int z = Math.max(area.getMinZ() + step, displayZone.getMinZ()); z < area.getMaxZ() - step / 2 && z < displayZone.getMaxZ(); z += step)
+        {
+            addDisplayed3D(displayZone, new IntVector(area.getMinX(), visualizationHeight, z), addSide);
+            addDisplayed3D(displayZone, new IntVector(area.getMaxX(), visualizationHeight, z), addSide);
+        }
+        if (area.getWidth() > 2)
+        {
+            addDisplayed3D(displayZone, new IntVector(area.getMinX(), visualizationHeight, area.getMinZ() + 1), addSide);
+            addDisplayed3D(displayZone, new IntVector(area.getMaxX(), visualizationHeight, area.getMinZ() + 1), addSide);
+            addDisplayed3D(displayZone, new IntVector(area.getMinX(), visualizationHeight, area.getMaxZ() - 1), addSide);
+            addDisplayed3D(displayZone, new IntVector(area.getMaxX(), visualizationHeight, area.getMaxZ() - 1), addSide);
+        }
+
+        // Add corners last to override any other elements created by very small claims.
+        addDisplayed3D(displayZone, new IntVector(area.getMinX(), visualizationHeight, area.getMaxZ()), addCorner);
+        addDisplayed3D(displayZone, new IntVector(area.getMaxX(), visualizationHeight, area.getMaxZ()), addCorner);
+        addDisplayed3D(displayZone, new IntVector(area.getMinX(), visualizationHeight, area.getMinZ()), addCorner);
+        addDisplayed3D(displayZone, new IntVector(area.getMaxX(), visualizationHeight, area.getMinZ()), addCorner);
+        
+        // Add vertical indicators at the Y boundaries to show the height limits
+        // Only add these if the claim has significant height (more than 2 blocks)
+        if (claimMaxY - claimMinY > 2)
+        {
+            // Add height indicators at corners to show the vertical extent
+            if (visualizationHeight != claimMinY && claimMinY >= world.getMinHeight())
+            {
+                // Show bottom boundary indicators
+                addDisplayed3D(displayZone, new IntVector(area.getMinX(), claimMinY, area.getMaxZ()), addCorner);
+                addDisplayed3D(displayZone, new IntVector(area.getMaxX(), claimMinY, area.getMaxZ()), addCorner);
+                addDisplayed3D(displayZone, new IntVector(area.getMinX(), claimMinY, area.getMinZ()), addCorner);
+                addDisplayed3D(displayZone, new IntVector(area.getMaxX(), claimMinY, area.getMinZ()), addCorner);
+            }
+            
+            if (visualizationHeight != claimMaxY && claimMaxY <= world.getMaxHeight())
+            {
+                // Show top boundary indicators
+                addDisplayed3D(displayZone, new IntVector(area.getMinX(), claimMaxY, area.getMaxZ()), addCorner);
+                addDisplayed3D(displayZone, new IntVector(area.getMaxX(), claimMaxY, area.getMaxZ()), addCorner);
+                addDisplayed3D(displayZone, new IntVector(area.getMinX(), claimMaxY, area.getMinZ()), addCorner);
+                addDisplayed3D(displayZone, new IntVector(area.getMaxX(), claimMaxY, area.getMinZ()), addCorner);
+            }
+        }
+    }
+
+    /**
+     * Add a display element if accessible (3D version that doesn't call parent's addDisplayed).
+     */
+    private void addDisplayed3D(
+            @NotNull BoundingBox displayZone,
+            @NotNull IntVector coordinate,
+            @NotNull Consumer<@NotNull IntVector> addElement)
+    {
+        // Check if coordinate is within display zone
+        if (coordinate.x() >= displayZone.getMinX() && coordinate.x() <= displayZone.getMaxX() &&
+            coordinate.y() >= displayZone.getMinY() && coordinate.y() <= displayZone.getMaxY() &&
+            coordinate.z() >= displayZone.getMinZ() && coordinate.z() <= displayZone.getMaxZ())
+        {
+            addElement.accept(coordinate);
+        }
     }
 
     /**

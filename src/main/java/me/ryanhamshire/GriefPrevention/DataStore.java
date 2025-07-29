@@ -140,7 +140,7 @@ public abstract class DataStore
         {
             if (claim.id >= nextClaimID)
             {
-                GriefPrevention.instance.getLogger().severe("nextClaimID was lesser or equal to an already-existing claim ID!\n" +
+                Bukkit.getLogger().severe("nextClaimID was lesser or equal to an already-existing claim ID!\n" +
                         "This usually happens if you ran out of storage space.");
                 GriefPrevention.AddLogEntry("Changing nextClaimID from " + nextClaimID + " to " + claim.id, CustomLogEntryTypes.Debug, false);
                 nextClaimID = claim.id + 1;
@@ -215,7 +215,7 @@ public abstract class DataStore
                     catch (Exception e)
                     {
                         playerID = null;
-                        GriefPrevention.AddLogEntry("Failed to parse soft mute entry as a UUID: " + nextID);
+                        Bukkit.getLogger().info("Failed to parse soft mute entry as a UUID: " + nextID);
                     }
 
                     //push it into the map
@@ -230,7 +230,7 @@ public abstract class DataStore
             }
             catch (Exception e)
             {
-                GriefPrevention.AddLogEntry("Failed to read from the soft mute data file: " + e.toString());
+                Bukkit.getLogger().info("Failed to read from the soft mute data file: " + e.toString());
                 e.printStackTrace();
             }
 
@@ -261,7 +261,7 @@ public abstract class DataStore
         }
         catch (Exception e)
         {
-            GriefPrevention.AddLogEntry("Failed to read from the banned words data file: " + e.toString());
+            Bukkit.getLogger().info("Failed to read from the banned words data file: " + e.toString());
             e.printStackTrace();
             return new ArrayList<>();
         }
@@ -314,7 +314,7 @@ public abstract class DataStore
         //if any problem, log it
         catch (Exception e)
         {
-            GriefPrevention.AddLogEntry("Unexpected exception saving soft mute data: " + e.getMessage());
+            Bukkit.getLogger().info("Unexpected exception saving soft mute data: " + e.getMessage());
             e.printStackTrace();
         }
 
@@ -439,6 +439,13 @@ public abstract class DataStore
             {
                 newClaim.parent.children.add(newClaim);
             }
+            
+            // 3D subdivisions need to be added to chunk claims map so getClaimAt can find them
+            if (newClaim.is3D())
+            {
+                addToChunkClaimMap(newClaim);
+            }
+            
             newClaim.inDataStore = true;
             if (writeToStorage)
             {
@@ -470,12 +477,20 @@ public abstract class DataStore
         {
             this.saveClaim(newClaim);
         }
+    
+
+        //make sure the claim is saved to disk
+        if (writeToStorage)
+        {
+            this.saveClaim(newClaim);
+        }
     }
 
     private void addToChunkClaimMap(Claim claim)
     {
-        // Subclaims should not be added to chunk claim map.
-        if (claim.parent != null) return;
+        // Regular subclaims should not be added to chunk claim map, but 3D subdivisions should be
+        // because they need to be independently discoverable by getClaimAt for trust commands
+        if (claim.parent != null && !claim.is3D()) return;
 
         ArrayList<Long> chunkHashes = claim.getChunkHashes();
         for (Long chunkHash : chunkHashes)
@@ -492,6 +507,9 @@ public abstract class DataStore
 
     private void removeFromChunkClaimMap(Claim claim)
     {
+        // Only remove claims that were added to the chunk map (regular claims and 3D subdivisions)
+        if (claim.parent != null && !claim.is3D()) return;
+        
         ArrayList<Long> chunkHashes = claim.getChunkHashes();
         for (Long chunkHash : chunkHashes)
         {
@@ -718,66 +736,68 @@ public abstract class DataStore
     synchronized public Claim getClaimAt(Location location, boolean ignoreHeight, boolean ignoreSubclaims, Claim cachedClaim)
     {
         // Check cached claim first
-        if (cachedClaim != null && cachedClaim.inDataStore) {
-            if (cachedClaim.contains(location, !cachedClaim.is3D() ? ignoreHeight : false, !ignoreSubclaims)) {
-                // For 3D subdivisions, check Y bounds explicitly and defer to parent if outside
-                if (cachedClaim.is3D() && !ignoreHeight) {
-                    int y = location.getBlockY();
-                    int minY = Math.min(cachedClaim.lesserBoundaryCorner.getBlockY(), cachedClaim.greaterBoundaryCorner.getBlockY());
-                    int maxY = Math.max(cachedClaim.lesserBoundaryCorner.getBlockY(), cachedClaim.greaterBoundaryCorner.getBlockY());
-                    if (y < minY || y > maxY) {
-                        if (cachedClaim.parent != null) {
-                            return cachedClaim.parent;
-                        }
-                    }
-                }
+        if (cachedClaim != null && cachedClaim.inDataStore && cachedClaim.contains(location, ignoreHeight, ignoreSubclaims))
+        {
+            // If this is a 3D claim, verify Y coordinate
+            if (!cachedClaim.is3D() || cachedClaim.containsY(location.getBlockY()))
+            {
                 return cachedClaim;
             }
         }
 
-        // Find a top-level claim
-        Long chunkID = getChunkHash(location);
-        ArrayList<Claim> claimsInChunk = this.chunksToClaimsMap.get(chunkID);
-        if (claimsInChunk == null) {
-            return null;
-        }
+        // Check all claims in the same chunks as the location
+        Set<Claim> claimsInChunks = this.getChunkClaims(location.getWorld(), new BoundingBox(location.getBlock()));
+        if (claimsInChunks.isEmpty()) return null;
 
-        for (Claim claim : claimsInChunk)
+        // Find the smallest claim that contains the location
+        Claim smallestClaim = null;
+        Claim smallest3DClaim = null;
+        
+        for (Claim claim : claimsInChunks)
         {
-            if (claim.inDataStore && claim.contains(location, ignoreHeight, false))
-            {
-                if (ignoreSubclaims) {
-                    return claim;
-                }
+            // Skip if the claim doesn't contain the location
+            if (!claim.contains(location, ignoreHeight, ignoreSubclaims)) continue;
 
-                // Check subdivisions - enforce strict 3D boundaries
-                for (int j = 0; j < claim.children.size(); j++)
+            // For 3D claims, verify Y coordinate
+            if (claim.is3D())
+            {
+                if (claim.containsY(location.getBlockY()))
                 {
-                    Claim subdivision = claim.children.get(j);
-                    if (subdivision.inDataStore) {
-                        if (subdivision.is3D()) {
-                            // For 3D subdivisions, always check height boundaries strictly
-                            if (subdivision.contains(location, false, false)) {
-                                return subdivision;
-                            }
-                            // If location is within X/Z bounds but outside Y bounds, return parent
-                            if (!ignoreHeight && subdivision.contains(location, true, false)) {
-                                // Location is in the X/Z footprint but outside Y bounds
-                                return claim;  // Return parent claim
-                            }
-                        } else {
-                            // For regular subdivisions, use normal height checking
-                            if (subdivision.contains(location, ignoreHeight, false)) {
-                                return subdivision;
-                            }
+                    // If we don't have a 3D claim yet, or this one is more specific (smaller Y-range), take it
+                    if (smallest3DClaim == null)
+                    {
+                        smallest3DClaim = claim;
+                    }
+                    else
+                    {
+                        // Calculate Y-range for both claims
+                        int currentYRange = claim.getGreaterBoundaryCorner().getBlockY() - claim.getLesserBoundaryCorner().getBlockY();
+                        int smallestYRange = smallest3DClaim.getGreaterBoundaryCorner().getBlockY() - smallest3DClaim.getLesserBoundaryCorner().getBlockY();
+                        
+                        // Prefer the claim with smaller Y-range (more specific), or smaller area if Y-ranges are equal
+                        if (currentYRange < smallestYRange || 
+                            (currentYRange == smallestYRange && claim.getArea() < smallest3DClaim.getArea()))
+                        {
+                            smallest3DClaim = claim;
                         }
                     }
                 }
-                return claim;
+                // Skip 3D claims that don't contain the Y coordinate
+                continue;
+            }
+            
+            // For non-3D claims, find the smallest one
+            if (smallestClaim == null || claim.getArea() < smallestClaim.getArea())
+            {
+                smallestClaim = claim;
             }
         }
 
-        return null;
+        // Return 3D claim if found, otherwise return smallest non-3D claim
+        Claim result = smallest3DClaim != null ? smallest3DClaim : smallestClaim;
+
+        // Return 3D claim if found, otherwise return smallest non-3D claim
+        return result;
     }
 
     //finds a claim by ID
@@ -940,7 +960,7 @@ public abstract class DataStore
                 result.claim = parent;
                 return result;
             }
-            // Don't sanitize depth for 3D subdivisions - preserve exact boundaries
+            // Don't sanitize depth for 3D claims - preserve exact boundaries
             if (bigy == smally) { // This indicates it's likely not a 3D subdivision
                 smally = sanitizeClaimDepth(parent, smally);
             }
@@ -960,6 +980,17 @@ public abstract class DataStore
             smally = world.getMinHeight();
         }
 
+        //determine if this should be a 3D claim (for subclaims with Y-range >= 1)
+        boolean is3D = false;
+        if (parent != null) { // This is a subclaim
+            int yDifference = Math.abs(bigy - smally);
+            // Changed from > 1 to >= 1 to properly detect 3D subclaims
+            if (yDifference >= 1) {
+                is3D = true;
+            }
+            Bukkit.getLogger().info("Creating subclaim with yDifference: " + yDifference + ", is3D: " + is3D);
+        }
+
         //create a new claim instance (but don't save it, yet)
         Claim newClaim = new Claim(
                 smallerBoundaryCorner,
@@ -969,7 +1000,9 @@ public abstract class DataStore
                 new ArrayList<>(),
                 new ArrayList<>(),
                 new ArrayList<>(),
-                id);
+                false, // inheritNothing
+                id,
+                is3D);
 
         newClaim.parent = parent;
 
@@ -1072,7 +1105,7 @@ public abstract class DataStore
             //if any problem, log it
             catch (Exception e)
             {
-                GriefPrevention.AddLogEntry("GriefPrevention: Unexpected exception saving data for player \"" + playerID.toString() + "\": " + e.getMessage());
+                Bukkit.getLogger().info("GriefPrevention: Unexpected exception saving data for player \"" + playerID.toString() + "\": " + e.getMessage());
                 e.printStackTrace();
             }
         }
@@ -1107,15 +1140,13 @@ public abstract class DataStore
     private int sanitizeClaimDepth(Claim claim, int newDepth) {
         if (claim.parent != null) claim = claim.parent;
 
-        // For 3D claims, don't modify their depth - preserve exact boundaries
-        if (claim.is3D()) {
-            return newDepth;
-        }
-
-        // Get the old depth including the depth of the lowest subdivision.
+        // For 3D subdivisions, don't extend parent claim to encompass them
+        // Only consider non-3D children when calculating depth
         int oldDepth = Math.min(
                 claim.getLesserBoundaryCorner().getBlockY(),
-                claim.children.stream().mapToInt(child -> child.getLesserBoundaryCorner().getBlockY())
+                claim.children.stream()
+                        .filter(child -> !child.is3D()) // Only consider non-3D children
+                        .mapToInt(child -> child.getLesserBoundaryCorner().getBlockY())
                         .min().orElse(Integer.MAX_VALUE));
 
         // Use the lowest of the old and new depths.
@@ -1141,11 +1172,8 @@ public abstract class DataStore
         final int depth = sanitizeClaimDepth(claim, newDepth);
 
         Stream.concat(Stream.of(claim), claim.children.stream()).forEach(localClaim -> {
-            // Skip 3D subdivisions - preserve their exact boundaries
-            if (!localClaim.is3D()) {
-                localClaim.lesserBoundaryCorner.setY(depth);
-                localClaim.greaterBoundaryCorner.setY(Math.max(localClaim.greaterBoundaryCorner.getBlockY(), depth));
-            }
+            localClaim.lesserBoundaryCorner.setY(depth);
+            localClaim.greaterBoundaryCorner.setY(Math.max(localClaim.greaterBoundaryCorner.getBlockY(), depth));
             this.saveClaim(localClaim);
         });
     }
@@ -1320,7 +1348,7 @@ public abstract class DataStore
             //if resizing someone else's claim, make a log entry
             if (!player.getUniqueId().equals(playerData.claimResizing.ownerID) && playerData.claimResizing.parent == null)
             {
-                GriefPrevention.AddLogEntry(player.getName() + " resized " + playerData.claimResizing.getOwnerName() + "'s claim at " + GriefPrevention.getfriendlyLocationString(playerData.claimResizing.lesserBoundaryCorner) + ".");
+                Bukkit.getLogger().info(player.getName() + " resized " + playerData.claimResizing.getOwnerName() + "'s claim at " + GriefPrevention.getfriendlyLocationString(playerData.claimResizing.lesserBoundaryCorner) + ".");
             }
 
             //if increased to a sufficiently large size and no subdivisions yet, send subdivision instructions
@@ -1423,7 +1451,7 @@ public abstract class DataStore
         }
         catch (IOException exception)
         {
-            GriefPrevention.AddLogEntry("Unable to write to the configuration file at \"" + DataStore.messagesFilePath + "\"");
+            Bukkit.getLogger().info("Unable to write to the configuration file at \"" + DataStore.messagesFilePath + "\"");
         }
     }
 
@@ -1504,7 +1532,7 @@ public abstract class DataStore
     {
         return getChunkClaims(
                 location.getWorld(),
-                new BoundingBox(location.subtract(150, 0, 150), location.clone().add(300, 0, 300)));
+                new BoundingBox(location.getBlock()));
     }
 
     //deletes all the land claims in a specified world
@@ -1518,6 +1546,19 @@ public abstract class DataStore
                 if (!deleteAdminClaims && claim.isAdminClaim()) continue;
                 this.deleteClaim(claim, false, false);
                 i--;
+            }
+        }
+    }
+
+    public void setPermission(Claim claim, String identifier, ClaimPermission permissionLevel) {
+        Bukkit.getLogger().info("Setting permission " + permissionLevel + " for " + identifier + " in claim " + claim.getID() + " (3D: " + claim.is3D() + ")");
+        // Always set the permission on the specific claim
+        claim.setPermission(identifier, permissionLevel);
+        
+        // Propagate to children only for non-3D claims
+        if (!claim.is3D()) {
+            for (Claim child : claim.children) {
+                setPermission(child, identifier, permissionLevel);
             }
         }
     }

@@ -182,7 +182,11 @@ public class BoundingBox implements Cloneable
     public BoundingBox(@NotNull Claim claim)
     {
         this(claim.getLesserBoundaryCorner(), claim.getGreaterBoundaryCorner(), false);
-        this.maxY = Objects.requireNonNull(claim.getLesserBoundaryCorner().getWorld()).getMaxHeight();
+        // For 3D claims, preserve their exact Y boundaries
+        // For 2D claims, extend to world max height
+        if (!claim.is3D()) {
+            this.maxY = Objects.requireNonNull(claim.getLesserBoundaryCorner().getWorld()).getMaxHeight();
+        }
     }
 
     /**
@@ -462,7 +466,6 @@ public class BoundingBox implements Cloneable
      *
      * <p>If the specified directional magnitude is negative, the box is contracted instead.
      *
-     * <p>When contracting, the box does not care if the contraction would cause a negative side length.
      * In these cases, the lowest point is redefined by the new location of the maximum corner instead.
      *
      * @param direction the direction to change size in
@@ -826,13 +829,28 @@ public class BoundingBox implements Cloneable
      * Checks if the bounding box intersects another bounding box.
      *
      * @param other the other bounding box
-     * @return true if the specified positions are inside the bounding box
+     * @return true if the boxes intersect
      */
     public boolean intersects(@NotNull BoundingBox other)
     {
         // For help visualizing test cases, try https://silentmatt.com/rectangle-intersection/
         return this.minX <= other.maxX && this.maxX >= other.minX
                 && this.minY <= other.maxY && this.maxY >= other.minY
+                && this.minZ <= other.maxZ && this.maxZ >= other.minZ;
+    }
+
+    /**
+     * Checks if the bounding box intersects another bounding box, optionally ignoring the Y-axis.
+     *
+     * @param other the other bounding box
+     * @param ignoreY whether to ignore Y-axis in the intersection check
+     * @return true if the boxes intersect
+     */
+    public boolean intersects(@NotNull BoundingBox other, boolean ignoreY)
+    {
+        // For help visualizing test cases, try https://silentmatt.com/rectangle-intersection/
+        return this.minX <= other.maxX && this.maxX >= other.minX
+                && (ignoreY || (this.minY <= other.maxY && this.maxY >= other.minY))
                 && this.minZ <= other.maxZ && this.maxZ >= other.minZ;
     }
 
