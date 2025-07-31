@@ -244,6 +244,10 @@ public class GriefPrevention extends JavaPlugin
     //how long to wait before deciding a player is staying online or staying offline, for notication messages
     public static final int NOTIFICATION_SECONDS = 20;
 
+    //error message rate limiting - tracks last error message time per player (10 second cooldown)
+    private static final ConcurrentHashMap<UUID, Long> lastErrorMessageTime = new ConcurrentHashMap<>();
+    private static final long ERROR_MESSAGE_COOLDOWN_MS = 10000; // 10 seconds
+
     //adds a server log entry
     public static synchronized void AddLogEntry(String entry, CustomLogEntryTypes customLogType, boolean excludeFromServerLogs)
     {
@@ -2850,6 +2854,68 @@ public class GriefPrevention extends JavaPlugin
         {
             task.run();
         }
+    }
+
+    //sends a rate-limited error message to a player (max once per 10 seconds)
+    public static void sendRateLimitedErrorMessage(@Nullable Player player, @NotNull Messages messageID, @NotNull String @NotNull ... args)
+    {
+        sendRateLimitedErrorMessage(player, messageID, 0, args);
+    }
+
+    //sends a rate-limited error message to a player with delay (max once per 10 seconds)
+    public static void sendRateLimitedErrorMessage(@Nullable Player player, @NotNull Messages messageID, long delayInTicks, @NotNull String @NotNull ... args)
+    {
+        if (player == null)
+        {
+            // If no player, send normally (for console/logs)
+            sendMessage(player, TextMode.Err, messageID, delayInTicks, args);
+            return;
+        }
+
+        UUID playerId = player.getUniqueId();
+        long currentTime = System.currentTimeMillis();
+        Long lastMessageTime = lastErrorMessageTime.get(playerId);
+
+        // Check if enough time has passed since the last error message
+        if (lastMessageTime == null || (currentTime - lastMessageTime) >= ERROR_MESSAGE_COOLDOWN_MS)
+        {
+            // Update the last message time
+            lastErrorMessageTime.put(playerId, currentTime);
+            // Send the message
+            sendMessage(player, TextMode.Err, messageID, delayInTicks, args);
+        }
+        // If not enough time has passed, silently ignore the message
+    }
+
+    //sends a rate-limited error message to a player with direct string (max once per 10 seconds)
+    public static void sendRateLimitedErrorMessage(@Nullable Player player, @NotNull String message)
+    {
+        sendRateLimitedErrorMessage(player, message, 0);
+    }
+
+    //sends a rate-limited error message to a player with direct string and delay (max once per 10 seconds)
+    public static void sendRateLimitedErrorMessage(@Nullable Player player, @NotNull String message, long delayInTicks)
+    {
+        if (player == null)
+        {
+            // If no player, send normally (for console/logs)
+            sendMessage(player, TextMode.Err, message, delayInTicks);
+            return;
+        }
+
+        UUID playerId = player.getUniqueId();
+        long currentTime = System.currentTimeMillis();
+        Long lastMessageTime = lastErrorMessageTime.get(playerId);
+
+        // Check if enough time has passed since the last error message
+        if (lastMessageTime == null || (currentTime - lastMessageTime) >= ERROR_MESSAGE_COOLDOWN_MS)
+        {
+            // Update the last message time
+            lastErrorMessageTime.put(playerId, currentTime);
+            // Send the message
+            sendMessage(player, TextMode.Err, message, delayInTicks);
+        }
+        // If not enough time has passed, silently ignore the message
     }
 
     //checks whether players can create claims in a world

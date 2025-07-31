@@ -1130,7 +1130,7 @@
              Supplier<String> noBuildReason = ProtectionHelper.checkPermission(player, entity.getLocation(), ClaimPermission.Build, event);
              if (noBuildReason != null)
              {
-                 GriefPrevention.sendMessage(player, TextMode.Err, noBuildReason.get());
+                 GriefPrevention.sendRateLimitedErrorMessage(player, noBuildReason.get());
                  event.setCancelled(true);
                  return;
              }
@@ -1163,7 +1163,7 @@
                      Supplier<String> noContainersReason = claim.checkPermission(player, ClaimPermission.Inventory, event);
                      if (noContainersReason != null)
                      {
-                         GriefPrevention.sendMessage(player, TextMode.Err, noContainersReason.get());
+                         GriefPrevention.sendRateLimitedErrorMessage(player, noContainersReason.get());
                          event.setCancelled(true);
                          return;
                      }
@@ -1189,7 +1189,7 @@
                  final Supplier<String> noContainersReason = claim.checkPermission(player, ClaimPermission.Inventory, event, override);
                  if (noContainersReason != null)
                  {
-                     GriefPrevention.sendMessage(player, TextMode.Err, noContainersReason.get());
+                     GriefPrevention.sendRateLimitedErrorMessage(player, noContainersReason.get());
                      event.setCancelled(true);
                      return;
                  }
@@ -1208,7 +1208,7 @@
                  if (failureReason != null)
                  {
                      event.setCancelled(true);
-                     GriefPrevention.sendMessage(player, TextMode.Err, failureReason.get());
+                     GriefPrevention.sendRateLimitedErrorMessage(player, failureReason.get());
                      return;
                  }
              }
@@ -1240,7 +1240,7 @@
              // If player has permission, action is allowed.
              if (noContainersReason == null) return;
              event.setCancelled(true);
-             GriefPrevention.sendMessage(player, TextMode.Err, noContainersReason.get());
+             GriefPrevention.sendRateLimitedErrorMessage(player, noContainersReason.get());
          }
      }
  
@@ -1266,7 +1266,7 @@
                  reason += "  " + instance.dataStore.getMessage(Messages.IgnoreClaimsAdvertisement);
              }
  
-             GriefPrevention.sendMessage(player, TextMode.Err, reason);
+             GriefPrevention.sendRateLimitedErrorMessage(player, reason);
  
              //cancel the event by preventing hatching
              event.setHatching(false);
@@ -1299,7 +1299,7 @@
                  if (errorMessage != null)
                  {
                      event.setCancelled(true);
-                     GriefPrevention.sendMessage(player, TextMode.Err, Messages.NoDamageClaimedEntity, claim.getOwnerName());
+                     GriefPrevention.sendRateLimitedErrorMessage(player, Messages.NoDamageClaimedEntity, claim.getOwnerName());
                      return;
                  }
              }
@@ -1352,7 +1352,7 @@
          Supplier<String> noBuildReason = ProtectionHelper.checkPermission(player, block.getLocation(), ClaimPermission.Build, bucketEvent);
          if (noBuildReason != null)
          {
-             GriefPrevention.sendMessage(player, TextMode.Err, noBuildReason.get());
+             GriefPrevention.sendRateLimitedErrorMessage(player, noBuildReason.get());
              bucketEvent.setCancelled(true);
              return;
          }
@@ -1390,7 +1390,7 @@
                      Location location = otherPlayer.getLocation();
                      if (!otherPlayer.equals(player) && otherPlayer.getGameMode() == GameMode.SURVIVAL && player.canSee(otherPlayer) && block.getY() >= location.getBlockY() - 1 && location.distanceSquared(block.getLocation()) < minLavaDistance * minLavaDistance)
                      {
-                         GriefPrevention.sendMessage(player, TextMode.Err, Messages.NoLavaNearOtherPlayer, "another player");
+                         GriefPrevention.sendRateLimitedErrorMessage(player, Messages.NoLavaNearOtherPlayer, "another player");
                          bucketEvent.setCancelled(true);
                          return;
                      }
@@ -1463,7 +1463,7 @@
          Supplier<String> noBuildReason = ProtectionHelper.checkPermission(player, block.getLocation(), ClaimPermission.Build, bucketEvent);
          if (noBuildReason != null)
          {
-             GriefPrevention.sendMessage(player, TextMode.Err, noBuildReason.get());
+             GriefPrevention.sendRateLimitedErrorMessage(player, noBuildReason.get());
              bucketEvent.setCancelled(true);
              return;
          }
@@ -1487,7 +1487,7 @@
              return;
  
          // If user is not allowed to build, prevent sign UI opening and send message.
-         GriefPrevention.sendMessage(player, TextMode.Err, denial.get());
+         GriefPrevention.sendRateLimitedErrorMessage(player, denial.get());
          event.setCancelled(true);
      }
  
@@ -1575,7 +1575,7 @@
              //block container use during pvp combat, same reason
              if (playerData.inPvpCombat())
              {
-                 GriefPrevention.sendMessage(player, TextMode.Err, Messages.PvPNoContainers);
+                 GriefPrevention.sendRateLimitedErrorMessage(player, Messages.PvPNoContainers);
                  event.setCancelled(true);
                  return;
              }
@@ -1590,7 +1590,7 @@
                  if (noContainersReason != null)
                  {
                      event.setCancelled(true);
-                     GriefPrevention.sendMessage(player, TextMode.Err, noContainersReason.get());
+                     GriefPrevention.sendRateLimitedErrorMessage(player, noContainersReason.get());
                      return;
                  }
              }
@@ -1627,7 +1627,7 @@
                  if (noAccessReason != null)
                  {
                      event.setCancelled(true);
-                     GriefPrevention.sendMessage(player, TextMode.Err, noAccessReason.get());
+                     GriefPrevention.sendRateLimitedErrorMessage(player, noAccessReason.get());
                      return;
                  }
              }
@@ -1646,7 +1646,7 @@
                  if (noAccessReason != null)
                  {
                      event.setCancelled(true);
-                     GriefPrevention.sendMessage(player, TextMode.Err, noAccessReason.get());
+                     GriefPrevention.sendRateLimitedErrorMessage(player, noAccessReason.get());
                      return;
                  }
              }
@@ -1665,7 +1665,7 @@
                  if (noContainerReason != null)
                  {
                      event.setCancelled(true);
-                     GriefPrevention.sendMessage(player, TextMode.Err, noContainerReason.get());
+                     GriefPrevention.sendRateLimitedErrorMessage(player, noContainerReason.get());
                      return;
                  }
              }
@@ -1692,7 +1692,7 @@
                  if (noBuildReason != null)
                  {
                      event.setCancelled(true);
-                     GriefPrevention.sendMessage(player, TextMode.Err, noBuildReason.get());
+                     GriefPrevention.sendRateLimitedErrorMessage(player, noBuildReason.get());
                      return;
                  }
              }
@@ -1723,7 +1723,7 @@
                  Supplier<String> noBuildReason = ProtectionHelper.checkPermission(player, event.getClickedBlock().getLocation(), ClaimPermission.Build, event);
                  if (noBuildReason != null)
                  {
-                     GriefPrevention.sendMessage(player, TextMode.Err, noBuildReason.get());
+                     GriefPrevention.sendRateLimitedErrorMessage(player, noBuildReason.get());
                      event.setCancelled(true);
                  }
  
@@ -1738,7 +1738,7 @@
                      Supplier<String> reason = claim.checkPermission(player, ClaimPermission.Inventory, event);
                      if (reason != null)
                      {
-                         GriefPrevention.sendMessage(player, TextMode.Err, reason.get());
+                         GriefPrevention.sendRateLimitedErrorMessage(player, reason.get());
                          event.setCancelled(true);
                      }
                  }
@@ -1762,7 +1762,7 @@
                      Supplier<String> reason = claim.checkPermission(player, ClaimPermission.Inventory, event);
                      if (reason != null)
                      {
-                         GriefPrevention.sendMessage(player, TextMode.Err, reason.get());
+                         GriefPrevention.sendRateLimitedErrorMessage(player, reason.get());
                          event.setCancelled(true);
                      }
                  }
@@ -1818,7 +1818,7 @@
                  //air indicates too far away
                  if (clickedBlockType == Material.AIR)
                  {
-                     GriefPrevention.sendMessage(player, TextMode.Err, Messages.TooFarAway);
+                     GriefPrevention.sendRateLimitedErrorMessage(player, Messages.TooFarAway);
  
                      // Remove visualizations
                      playerData.setVisibleBoundaries(null);
@@ -1910,7 +1910,7 @@
              //if the player doesn't have claims permission, don't do anything
              if (!player.hasPermission("griefprevention.createclaims"))
              {
-                 GriefPrevention.sendMessage(player, TextMode.Err, Messages.NoCreateClaimPermission);
+                 GriefPrevention.sendRateLimitedErrorMessage(player, Messages.NoCreateClaimPermission);
                  return;
              }
  
@@ -2012,7 +2012,7 @@
                              // If corners are at different Y levels, create a 3D subdivision with specific height boundaries
                              if (Math.abs(y2 - y1) == 0) {
                                  // Same Y level - create full-height 2D subdivision
-                                 minY = Math.min(y1, y2) - instance.config_claims_claimsExtendIntoGroundDistance;
+                                 minY = playerData.claimSubdividing.getLesserBoundaryCorner().getBlockY();
                                  maxY = player.getWorld().getMaxHeight();
                              } else {
                                  // Different Y levels - create 3D subdivision with specific height boundaries
@@ -2121,7 +2121,7 @@
                  //apply pvp rule
                  if (playerData.inPvpCombat())
                  {
-                     GriefPrevention.sendMessage(player, TextMode.Err, Messages.NoClaimDuringPvP);
+                     GriefPrevention.sendRateLimitedErrorMessage(player, Messages.NoClaimDuringPvP);
                      return;
                  }
  
@@ -2233,7 +2233,7 @@
              {
                  event.setCancelled(true);
                  player.closeInventory();
-                 GriefPrevention.sendMessage(player, TextMode.Err, noContainerReason.get());
+                 GriefPrevention.sendRateLimitedErrorMessage(player, noContainerReason.get());
              }
          }
      }
