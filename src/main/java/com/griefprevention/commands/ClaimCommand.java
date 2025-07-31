@@ -168,24 +168,17 @@ public class ClaimCommand extends CommandHandler
             @NotNull Location greater,
             @Nullable UUID ownerId)
     {
-        plugin.getLogger().warning("Creating claim...");
         World world = player.getWorld();
         int minY;
         int maxY;
-        if (true) {
-            plugin.getLogger().warning("Creating subclaim: lesser Y = " + lesser.getBlockY() + ", greater Y = " + greater.getBlockY());
+
+        // Check if we're creating a subclaim (inside an existing claim)
+        Claim parentClaim = plugin.dataStore.getClaimAt(lesser, true, null);
+        if (parentClaim != null) {
             if (lesser.getBlockY() == greater.getBlockY()) {
-                plugin.getLogger().warning("2D subclaim: using parent's Y boundaries");
-                Claim parentClaim = plugin.dataStore.getClaimAt(lesser, true, null);
-                if (parentClaim != null) {
-                    minY = parentClaim.getLesserBoundaryCorner().getBlockY();
-                    maxY = parentClaim.getGreaterBoundaryCorner().getBlockY();
-                } else {
-                    minY = lesser.getBlockY() - plugin.config_claims_claimsExtendIntoGroundDistance - 1;
-                    maxY = world.getHighestBlockYAt(greater) - plugin.config_claims_claimsExtendIntoGroundDistance - 1;
-                }
+                minY = parentClaim.getLesserBoundaryCorner().getBlockY();
+                maxY = parentClaim.getGreaterBoundaryCorner().getBlockY();
             } else {
-                plugin.getLogger().warning("3D subclaim: using min and max Y of corners");
                 minY = Math.min(lesser.getBlockY(), greater.getBlockY());
                 maxY = Math.max(lesser.getBlockY(), greater.getBlockY());
             }
@@ -193,7 +186,6 @@ public class ClaimCommand extends CommandHandler
             minY = lesser.getBlockY() - plugin.config_claims_claimsExtendIntoGroundDistance - 1;
             maxY = world.getHighestBlockYAt(greater) - plugin.config_claims_claimsExtendIntoGroundDistance - 1;
         }
-        plugin.getLogger().warning("Using minY: " + minY + ", maxY: " + maxY);
         CreateClaimResult result = plugin.dataStore.createClaim(world,
                 lesser.getBlockX(), greater.getBlockX(),
                 minY, maxY,

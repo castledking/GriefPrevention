@@ -2292,10 +2292,18 @@ public class GriefPrevention extends JavaPlugin
         //which claim is being abandoned?
         Claim claim = this.dataStore.getClaimAt(player.getLocation(), false, playerData.lastClaim);
 
+        //if no claim here, nothing to abandon
+        if (claim == null)
+        {
+            GriefPrevention.sendMessage(player, TextMode.Err, Messages.BlockNotClaimed);
+            return true;
+        }
+
         //verify ownership
         if (claim.checkPermission(player, ClaimPermission.Edit, null) != null)
         {
             GriefPrevention.sendMessage(player, TextMode.Err, Messages.NotYourClaim);
+            return true;
         }
 
         //warn if has children and we're not explicitly deleting a top level claim
@@ -2506,7 +2514,6 @@ public class GriefPrevention extends JavaPlugin
             {
                 location = this.dataStore.getMessage(Messages.LocationCurrentClaim);
             }
-            Bukkit.getLogger().info("Trust command executed by " + player.getName() + " for " + recipientName + " on claims: " + targetClaims.stream().map(Claim::getID).collect(Collectors.toList()));
             GriefPrevention.sendMessage(player, TextMode.Success, Messages.GrantPermissionConfirmation, recipientName, permissionDescription, location);
         }
     }

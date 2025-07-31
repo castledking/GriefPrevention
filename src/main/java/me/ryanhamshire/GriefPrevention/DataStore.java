@@ -782,14 +782,22 @@ public abstract class DataStore
                         }
                     }
                 }
-                // Skip 3D claims that don't contain the Y coordinate
-                continue;
+                else
+                {
+                    // 3D claim doesn't contain Y coordinate, treat it as a regular claim fallback
+                    if (smallestClaim == null || claim.getArea() < smallestClaim.getArea())
+                    {
+                        smallestClaim = claim;
+                    }
+                }
             }
-            
-            // For non-3D claims, find the smallest one
-            if (smallestClaim == null || claim.getArea() < smallestClaim.getArea())
+            else
             {
-                smallestClaim = claim;
+                // For non-3D claims, find the smallest one
+                if (smallestClaim == null || claim.getArea() < smallestClaim.getArea())
+                {
+                    smallestClaim = claim;
+                }
             }
         }
 
@@ -988,7 +996,6 @@ public abstract class DataStore
             if (yDifference >= 1) {
                 is3D = true;
             }
-            Bukkit.getLogger().info("Creating subclaim with yDifference: " + yDifference + ", is3D: " + is3D);
         }
 
         //create a new claim instance (but don't save it, yet)
@@ -1551,7 +1558,6 @@ public abstract class DataStore
     }
 
     public void setPermission(Claim claim, String identifier, ClaimPermission permissionLevel) {
-        Bukkit.getLogger().info("Setting permission " + permissionLevel + " for " + identifier + " in claim " + claim.getID() + " (3D: " + claim.is3D() + ")");
         // Always set the permission on the specific claim
         claim.setPermission(identifier, permissionLevel);
         

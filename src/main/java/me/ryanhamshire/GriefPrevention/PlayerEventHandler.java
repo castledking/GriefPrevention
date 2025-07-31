@@ -2008,15 +2008,16 @@
                              int y2 = clickedBlock.getY();
                              int minY, maxY;
  
-                             // If height difference is 1 or more blocks, use the actual Y coordinates
-                             // Otherwise, use the default behavior
-                             if (Math.abs(y2 - y1) >= 1) {
-                                 minY = Math.min(y1, y2);
-                                 maxY = Math.max(y1, y2);
-                             } else {
-                                 // Use the current behavior
+                             // If both corners are at the same Y level, create a full-height 2D subdivision
+                             // If corners are at different Y levels, create a 3D subdivision with specific height boundaries
+                             if (Math.abs(y2 - y1) == 0) {
+                                 // Same Y level - create full-height 2D subdivision
                                  minY = Math.min(y1, y2) - instance.config_claims_claimsExtendIntoGroundDistance;
                                  maxY = player.getWorld().getMaxHeight();
+                             } else {
+                                 // Different Y levels - create 3D subdivision with specific height boundaries
+                                 minY = Math.min(y1, y2);
+                                 maxY = Math.max(y1, y2);
                              }
  
                              //try to create a new claim (will return null if this subdivision overlaps another)

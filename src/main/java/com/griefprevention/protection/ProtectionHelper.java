@@ -101,9 +101,6 @@ public final class ProtectionHelper
         // Update cached claim.
         playerData.lastClaim = claim;
 
-        // Log the permission check
-        Bukkit.getLogger().info("Checking permission " + permission + " for " + player.getName() + " in claim " + claim.getID() + " (3D: " + claim.is3D() + ")");
-
         // For 3D claims, only check the specific subclaim, not parent claims
         if (claim.is3D()) {
             return claim.checkPermission(player, permission, trigger);
