@@ -215,9 +215,14 @@ public abstract class BoundaryVisualization
         // Correct visualization type for claim type for simplicity.
         if (type == VisualizationType.CLAIM && claim.isAdminClaim()) type = VisualizationType.ADMIN_CLAIM;
 
-        // For 3D claims, only visualize the specific claim being looked at
+        // For 3D claims, only visualize the specific claim being looked at and
+        // force 3D subdivision visualization style unless a special type is requested.
         if (claim.is3D()) {
-            return Set.of(new Boundary(claim, type));
+            VisualizationType resolvedType = switch (type) {
+                case CONFLICT_ZONE, INITIALIZE_ZONE -> type; // preserve special intents
+                default -> VisualizationType.SUBDIVISION_3D; // coerce to 3D subdivision style
+            };
+            return Set.of(new Boundary(claim, resolvedType));
         }
 
         // For non-3D claims, gather all boundaries. It's important that children override parent so

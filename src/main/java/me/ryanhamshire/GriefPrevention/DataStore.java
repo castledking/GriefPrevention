@@ -735,14 +735,45 @@ public abstract class DataStore
      */
     synchronized public Claim getClaimAt(Location location, boolean ignoreHeight, boolean ignoreSubclaims, Claim cachedClaim)
     {
-        // Check cached claim first
+        // Check cached claim first, but don't prematurely return a non-3D claim if a more specific 3D subclaim exists.
         if (cachedClaim != null && cachedClaim.inDataStore && cachedClaim.contains(location, ignoreHeight, ignoreSubclaims))
         {
-            // If this is a 3D claim, verify Y coordinate
-            if (!cachedClaim.is3D() || cachedClaim.containsY(location.getBlockY()))
+            final boolean cachedAcceptsY = !cachedClaim.is3D() || cachedClaim.containsY(location.getBlockY());
+            if (cachedAcceptsY)
             {
+                if (!ignoreSubclaims)
+                {
+                    // Look for a more specific 3D claim within the same chunks that contains this location including Y.
+                    Set<Claim> claimsInChunks = this.getChunkClaims(location.getWorld(), new BoundingBox(location.getBlock()));
+                    Claim better3D = null;
+                    for (Claim claim : claimsInChunks)
+                    {
+                        if (!claim.contains(location, false /* respect height */, false)) continue;
+                        if (!claim.is3D()) continue;
+                        // Prefer smallest Y-range, then area
+                        if (better3D == null)
+                        {
+                            better3D = claim;
+                        }
+                        else
+                        {
+                            int currentYRange = claim.getGreaterBoundaryCorner().getBlockY() - claim.getLesserBoundaryCorner().getBlockY();
+                            int bestYRange = better3D.getGreaterBoundaryCorner().getBlockY() - better3D.getLesserBoundaryCorner().getBlockY();
+                            if (currentYRange < bestYRange || (currentYRange == bestYRange && claim.getArea() < better3D.getArea()))
+                            {
+                                better3D = claim;
+                            }
+                        }
+                    }
+                    if (better3D != null)
+                    {
+                        return better3D;
+                    }
+                }
+                // No better 3D claim found; return cached.
                 return cachedClaim;
             }
+            // If cached is 3D but doesn't accept Y, continue to full search below.
         }
 
         // Check all claims in the same chunks as the location
@@ -1217,9 +1248,14 @@ public abstract class DataStore
             // copy the boundary from the claim created in the dry run of createClaim() to our existing claim
             claim.lesserBoundaryCorner = result.claim.lesserBoundaryCorner;
             claim.greaterBoundaryCorner = result.claim.greaterBoundaryCorner;
-            // Sanitize claim depth, expanding parent down to the lowest subdivision and subdivisions down to parent.
-            // Also saves affected claims.
-            setNewDepth(claim, claim.getLesserBoundaryCorner().getBlockY());
+            // Sanitize claim depth for non-3D claims only. For 3D subdivisions, do not adjust
+            // parent/child depths as they have explicit Y bounds and should NOT extend to claim bottom.
+            if (!claim.is3D())
+            {
+                // Expands parent down to the lowest non-3D subdivision and subdivisions down to parent.
+                // Also saves affected claims.
+                setNewDepth(claim, claim.getLesserBoundaryCorner().getBlockY());
+            }
             result.claim = claim;
             addToChunkClaimMap(claim); // add the new boundary to the chunk cache
         }

@@ -1945,8 +1945,44 @@
                      newz2 = clickedBlock.getZ();
                  }
  
-                 newy1 = playerData.claimResizing.getLesserBoundaryCorner().getBlockY();
-                 newy2 = clickedBlock.getY() - instance.config_claims_claimsExtendIntoGroundDistance;
+                 // Y resizing behavior
+                 if (playerData.claimResizing.is3D())
+                 {
+                     // For 3D subclaims, allow vertical resizing when the initial corner was at minY or maxY.
+                     int currentMinY = playerData.claimResizing.getLesserBoundaryCorner().getBlockY();
+                     int currentMaxY = playerData.claimResizing.getGreaterBoundaryCorner().getBlockY();
+                     int startY = playerData.lastShovelLocation.getBlockY();
+                     int endY = clickedBlock.getY();
+
+                     // Default: preserve Y range
+                     newy1 = currentMinY;
+                     newy2 = currentMaxY;
+
+                     if (startY == currentMinY)
+                     {
+                         // Dragging from bottom edge: adjust minY
+                         newy1 = Math.min(endY, currentMaxY);
+                     }
+                     else if (startY == currentMaxY)
+                     {
+                         // Dragging from top edge: adjust maxY
+                         newy2 = Math.max(endY, currentMinY);
+                     }
+
+                     // Ensure ordering
+                     if (newy1 > newy2)
+                     {
+                         int tmp = newy1;
+                         newy1 = newy2;
+                         newy2 = tmp;
+                     }
+                 }
+                 else
+                 {
+                     // 2D claims keep legacy behavior: extend into ground based on clicked Y
+                     newy1 = playerData.claimResizing.getLesserBoundaryCorner().getBlockY();
+                     newy2 = clickedBlock.getY() - instance.config_claims_claimsExtendIntoGroundDistance;
+                 }
  
                  this.dataStore.resizeClaimWithChecks(player, playerData, newx1, newx2, newy1, newy2, newz1, newz2);
  
@@ -1954,7 +1990,14 @@
              }
  
              //otherwise, since not currently resizing a claim, must be starting a resize, creating a new claim, or creating a subdivision
-             Claim claim = this.dataStore.getClaimAt(clickedBlock.getLocation(), true /*ignore height*/, playerData.lastClaim);
+            // Prefer a Y-aware lookup first so we correctly target stacked 3D subclaims at this Y level.
+            Claim resolvedClaim = this.dataStore.getClaimAt(clickedBlock.getLocation(), false /* respect height */, playerData.lastClaim);
+            if (resolvedClaim == null)
+            {
+                // Fallback to ignore-height search to preserve legacy behavior when no 3D subclaim matches Y
+                resolvedClaim = this.dataStore.getClaimAt(clickedBlock.getLocation(), true /* ignore height */, playerData.lastClaim);
+            }
+            final Claim claim = resolvedClaim;
  
              //if within an existing claim, he's not creating a new one
              if (claim != null)
@@ -1969,6 +2012,9 @@
                          playerData.claimResizing = claim;
                          playerData.lastShovelLocation = clickedBlock.getLocation();
                          GriefPrevention.sendMessage(player, TextMode.Instr, Messages.ResizeStart);
+                         // Refresh visualization in resize mode. For 3D subclaims this will render corners + stubs
+                         // due to coercion in BoundaryVisualization.defineBoundaries().
+                         BoundaryVisualization.visualizeClaim(player, claim, VisualizationType.CLAIM, clickedBlock);
                      }
  
                      //if he didn't click on a corner and is in subdivision mode, he's creating a new subdivision
