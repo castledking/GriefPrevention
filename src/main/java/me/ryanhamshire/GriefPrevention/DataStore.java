@@ -968,10 +968,9 @@ public abstract class DataStore
                 result.claim = parent;
                 return result;
             }
-            // Don't sanitize depth for 3D claims - preserve exact boundaries
-            if (bigy == smally) { // This indicates it's likely not a 3D subdivision
-                smally = sanitizeClaimDepth(parent, smally);
-            }
+            // Preserve exact Y boundaries for subclaims (including single-layer 3D).
+            // Previously, zero-height subclaims were sanitized to parent's bottom, unintentionally
+            // creating tall subclaims. We no longer do that here.
         }
 
         //claims can't be made outside the world border
@@ -988,14 +987,15 @@ public abstract class DataStore
             smally = world.getMinHeight();
         }
 
-        //determine if this should be a 3D claim (for subclaims with Y-range >= 1)
+        // Determine if this should be a 3D claim.
+        // Any subclaim that does NOT span the entire vertical height from the parent's bottom to world max
+        // is considered 3D, including single-layer (minY == maxY) subclaims.
         boolean is3D = false;
-        if (parent != null) { // This is a subclaim
-            int yDifference = Math.abs(bigy - smally);
-            // Changed from > 1 to >= 1 to properly detect 3D subclaims
-            if (yDifference >= 1) {
-                is3D = true;
-            }
+        if (parent != null) {
+            int parentBottomY = parent.getLesserBoundaryCorner().getBlockY();
+            int worldMaxY = world.getMaxHeight();
+            boolean spansFullHeight = (smally == parentBottomY) && (bigy == worldMaxY);
+            is3D = !spansFullHeight;
         }
 
         //create a new claim instance (but don't save it, yet)

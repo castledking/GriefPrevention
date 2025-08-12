@@ -43,6 +43,7 @@ public enum Messages
     AdminClaimsMode("Administrative claims mode active.  Any claims created will be free and editable by other administrators."),
     BasicClaimsMode("Returned to basic claim creation mode."),
     SubdivisionMode("Subdivision mode.  Use your shovel to create subdivisions in your existing claims.  Use /basicclaims to exit."),
+    SubdivisionMode3D("3D Subdivision mode.  Use your shovel to create 3D subdivisions in your existing claims.  Use /basicclaims to exit."),
     SubdivisionVideo2("Click for Subdivision Help: {0}", "0:video URL"),
     DeleteClaimMissing("There's no claim here."),
     DeletionSubdivisionWarning("This claim includes subdivisions.  If you're sure you want to delete it, use /deleteclaim again."),

@@ -1972,7 +1972,7 @@
                      }
  
                      //if he didn't click on a corner and is in subdivision mode, he's creating a new subdivision
-                     else if (playerData.shovelMode == ShovelMode.Subdivide)
+                     else if (playerData.shovelMode == ShovelMode.Subdivide || playerData.shovelMode == ShovelMode.Subdivide3D)
                      {
                          //if it's the first click, he's trying to start a new subdivision
                          if (playerData.lastShovelLocation == null)
@@ -2003,23 +2003,30 @@
                                  return;
                              }
  
-                             // Calculate height difference between the two selected points
-                             int y1 = playerData.lastShovelLocation.getBlockY();
-                             int y2 = clickedBlock.getY();
-                             int minY, maxY;
- 
-                             // If both corners are at the same Y level, create a full-height 2D subdivision
-                             // If corners are at different Y levels, create a 3D subdivision with specific height boundaries
-                             if (Math.abs(y2 - y1) == 0) {
-                                 // Same Y level - create full-height 2D subdivision
-                                 minY = playerData.claimSubdividing.getLesserBoundaryCorner().getBlockY();
-                                 maxY = player.getWorld().getMaxHeight();
-                             } else {
-                                 // Different Y levels - create 3D subdivision with specific height boundaries
-                                 minY = Math.min(y1, y2);
-                                 maxY = Math.max(y1, y2);
-                             }
- 
+                             // Determine Y boundaries based on shovel mode
+                            int y1 = playerData.lastShovelLocation.getBlockY();
+                            int y2 = clickedBlock.getY();
+                            int minY, maxY;
+
+                            if (playerData.shovelMode == ShovelMode.Subdivide) {
+                                // 2D mode: full height from parent bottom to world max height
+                                minY = playerData.claimSubdividing.getLesserBoundaryCorner().getBlockY();
+                                maxY = player.getWorld().getMaxHeight();
+                            } else if (playerData.shovelMode == ShovelMode.Subdivide3D) {
+                                // 3D mode: same-Y -> single-layer 3D; different Y -> bounded 3D
+                                if (Math.abs(y2 - y1) == 0) {
+                                    minY = y1;
+                                    maxY = y1; // single layer high
+                                } else {
+                                    minY = Math.min(y1, y2);
+                                    maxY = Math.max(y1, y2);
+                                }
+                            } else {
+                                // Fallback (shouldn't happen): default to parent Y bounds
+                                minY = playerData.claimSubdividing.getLesserBoundaryCorner().getBlockY();
+                                maxY = player.getWorld().getMaxHeight();
+                            }
+
                              //try to create a new claim (will return null if this subdivision overlaps another)
                              CreateClaimResult result = this.dataStore.createClaim(
                                      player.getWorld(),
