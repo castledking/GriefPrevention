@@ -835,7 +835,61 @@ public abstract class DataStore
         // Return 3D claim if found, otherwise return smallest non-3D claim
         Claim result = smallest3DClaim != null ? smallest3DClaim : smallestClaim;
 
-        // Return 3D claim if found, otherwise return smallest non-3D claim
+        // If subclaims are allowed and a parent claim was selected, prefer a matching child (handles 2D subdivisions)
+        if (!ignoreSubclaims && result != null && result.parent == null && !result.children.isEmpty())
+        {
+            Claim bestChild = null;
+
+            for (Claim child : result.children)
+            {
+                if (!child.inDataStore) continue;
+                // For child.contains: for 2D children, height is effectively ignored;
+                // for 3D children, Y is enforced because ignoreHeight=false
+                if (!child.contains(location, false /* respect height where applicable */, false)) continue;
+
+                if (bestChild == null)
+                {
+                    bestChild = child;
+                }
+                else
+                {
+                    // Prefer more specific child:
+                    // - If both 3D, choose smaller Y-range; tie-breaker by smaller area
+                    // - If one is 3D and the other is not, prefer 3D (more specific)
+                    // - If both non-3D, choose smaller area
+                    boolean bestIs3D = bestChild.is3D();
+                    boolean currIs3D = child.is3D();
+
+                    if (bestIs3D && currIs3D)
+                    {
+                        int bestYRange = bestChild.getGreaterBoundaryCorner().getBlockY() - bestChild.getLesserBoundaryCorner().getBlockY();
+                        int currYRange = child.getGreaterBoundaryCorner().getBlockY() - child.getLesserBoundaryCorner().getBlockY();
+                        if (currYRange < bestYRange || (currYRange == bestYRange && child.getArea() < bestChild.getArea()))
+                        {
+                            bestChild = child;
+                        }
+                    }
+                    else if (!bestIs3D && currIs3D)
+                    {
+                        bestChild = child; // prefer 3D over 2D if both match
+                    }
+                    else if (!bestIs3D && !currIs3D)
+                    {
+                        if (child.getArea() < bestChild.getArea())
+                        {
+                            bestChild = child;
+                        }
+                    }
+                }
+            }
+
+            if (bestChild != null)
+            {
+                result = bestChild;
+            }
+        }
+
+        // Return the most specific claim found at this location
         return result;
     }
 
