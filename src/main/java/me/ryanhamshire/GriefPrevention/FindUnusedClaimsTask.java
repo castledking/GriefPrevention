@@ -25,6 +25,8 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import me.ryanhamshire.GriefPrevention.util.SchedulerUtil;
+
 //FEATURE: automatically remove claims owned by inactive players which:
 //...aren't protecting much OR
 //...are a free new player claim (and the player has no other claims) OR
@@ -54,7 +56,7 @@ class FindUnusedClaimsTask implements Runnable
             return;
         }
 
-        GriefPrevention.instance.getServer().getScheduler().runTaskAsynchronously(GriefPrevention.instance, new CleanupUnusedClaimPreTask(claimOwnerIterator.next()));
+        SchedulerUtil.runLaterGlobal(GriefPrevention.instance, new CleanupUnusedClaimPreTask(claimOwnerIterator.next()), 0L);
     }
 
     public void refreshUUIDs()
