@@ -19,6 +19,7 @@
 package me.ryanhamshire.GriefPrevention;
 
 import org.bukkit.entity.Player;
+import me.ryanhamshire.GriefPrevention.util.SchedulerUtil;
 
 //sends a message to a player
 //used to send delayed messages, for example help text triggered by a player's chat
@@ -49,7 +50,7 @@ class PvPImmunityValidationTask implements Runnable
         else
         {
             //otherwise check again in one minute
-            GriefPrevention.instance.getServer().getScheduler().scheduleSyncDelayedTask(GriefPrevention.instance, this, 1200L);
+            SchedulerUtil.runLaterEntity(GriefPrevention.instance, player, this::run, 1200L);
         }
     }
 }

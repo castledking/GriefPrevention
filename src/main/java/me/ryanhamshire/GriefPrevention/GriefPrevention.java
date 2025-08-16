@@ -82,6 +82,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import me.ryanhamshire.GriefPrevention.util.SchedulerUtil;
+import me.ryanhamshire.GriefPrevention.util.TaskHandle;
+
 public class GriefPrevention extends JavaPlugin
 {
     //for convenience, a reference to the instance of this plugin
@@ -348,12 +351,12 @@ public class GriefPrevention extends JavaPlugin
         if (this.config_claims_blocksAccruedPerHour_default > 0)
         {
             DeliverClaimBlocksTask task = new DeliverClaimBlocksTask(null, this);
-            this.getServer().getScheduler().scheduleSyncRepeatingTask(this, task, 20L * 60 * 10, 20L * 60 * 10);
+            SchedulerUtil.runRepeatingGlobal(this, task, 20L * 60 * 10, 20L * 60 * 10);
         }
 
         //start recurring cleanup scan for unused claims belonging to inactive players
         FindUnusedClaimsTask task2 = new FindUnusedClaimsTask();
-        this.getServer().getScheduler().scheduleSyncRepeatingTask(this, task2, 20L * 60, 20L * config_advanced_claim_expiration_check_rate);
+        SchedulerUtil.runRepeatingGlobal(this, task2, 20L * 60, 20L * config_advanced_claim_expiration_check_rate);
 
         //register for events
         PluginManager pluginManager = this.getServer().getPluginManager();
@@ -362,7 +365,7 @@ public class GriefPrevention extends JavaPlugin
         playerEventHandler = new PlayerEventHandler(this.dataStore, this);
         pluginManager.registerEvents(playerEventHandler, this);
         // Load monitored commands on a 1-tick delay to allow plugins to enable and Bukkit to load commands.yml.
-        getServer().getScheduler().runTaskLater(this, playerEventHandler::reload, 1L);
+        SchedulerUtil.runLaterGlobal(this, playerEventHandler::reload, 1L);
 
         //block events
         BlockEventHandler blockEventHandler = new BlockEventHandler(this.dataStore);
@@ -2066,7 +2069,7 @@ public class GriefPrevention extends JavaPlugin
 
             //create a task to rescue this player in a little while
             PlayerRescueTask task = new PlayerRescueTask(player, player.getLocation(), event.getDestination());
-            this.getServer().getScheduler().scheduleSyncDelayedTask(this, task, 200L);  //20L ~ 1 second
+            SchedulerUtil.runLaterEntity(this, player, task::run, 200L);  //20L ~ 1 second
 
             return true;
         }
@@ -2759,7 +2762,7 @@ public class GriefPrevention extends JavaPlugin
 
             //start a task to re-check this player's inventory every minute until his immunity is gone
             PvPImmunityValidationTask task = new PvPImmunityValidationTask(player);
-            this.getServer().getScheduler().scheduleSyncDelayedTask(this, task, 1200L);
+            SchedulerUtil.runLaterEntity(this, player, task::run, 1200L);
         }
     }
 
@@ -2860,7 +2863,7 @@ public class GriefPrevention extends JavaPlugin
         //Only schedule if there should be a delay. Otherwise, send the message right now, else the message will appear out of order.
         if (delayInTicks > 0)
         {
-            GriefPrevention.instance.getServer().getScheduler().runTaskLater(GriefPrevention.instance, task, delayInTicks);
+            SchedulerUtil.runLaterEntity(GriefPrevention.instance, player, task::run, delayInTicks);
         }
         else
         {
@@ -3197,12 +3200,12 @@ public class GriefPrevention extends JavaPlugin
 	*/
 
     //Track scheduled "rescues" so we can cancel them if the player happens to teleport elsewhere so we can cancel it.
-    ConcurrentHashMap<UUID, BukkitTask> portalReturnTaskMap = new ConcurrentHashMap<>();
+    ConcurrentHashMap<UUID, TaskHandle> portalReturnTaskMap = new ConcurrentHashMap<>();
 
     public void startRescueTask(Player player, Location location)
     {
         //Schedule task to reset player's portal cooldown after 30 seconds (Maximum timeout time for client, in case their network is slow and taking forever to load chunks)
-        BukkitTask task = new CheckForPortalTrapTask(player, this, location).runTaskLater(GriefPrevention.instance, 600L);
+        TaskHandle task = SchedulerUtil.runLaterEntity(GriefPrevention.instance, player, () -> new CheckForPortalTrapTask(player, this, location).run(), 600L);
 
         //Cancel existing rescue task
         if (portalReturnTaskMap.containsKey(player.getUniqueId()))

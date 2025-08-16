@@ -105,6 +105,9 @@
  import java.util.function.Supplier;
  import java.util.regex.Pattern;
  
+ import me.ryanhamshire.GriefPrevention.util.SchedulerUtil;
+ import me.ryanhamshire.GriefPrevention.util.TaskHandle;
+ 
  class PlayerEventHandler implements Listener
  {
      private final DataStore dataStore;
@@ -389,7 +392,7 @@
  
                  //kick and ban
                  PlayerKickBanTask task = new PlayerKickBanTask(player, instance.config_spam_banMessage, "GriefPrevention Anti-Spam", true);
-                 instance.getServer().getScheduler().scheduleSyncDelayedTask(instance, task, 1L);
+                 SchedulerUtil.runLaterEntity(instance, player, task::run, 1L);
              }
              else
              {
@@ -398,7 +401,7 @@
  
                  //just kick
                  PlayerKickBanTask task = new PlayerKickBanTask(player, "", "GriefPrevention Anti-Spam", false);
-                 instance.getServer().getScheduler().scheduleSyncDelayedTask(instance, task, 1L);
+                 SchedulerUtil.runLaterEntity(instance, player, task::run, 1L);
              }
          }
          else if (result.shouldWarnChatter)
@@ -648,7 +651,7 @@
              if (instance.config_claims_worldModes.get(player.getWorld()) == ClaimsMode.Survival && !player.hasPermission("griefprevention.adminclaims") && this.dataStore.claims.size() > 10)
              {
                  WelcomeTask task = new WelcomeTask(player);
-                 Bukkit.getScheduler().scheduleSyncDelayedTask(instance, task, instance.config_claims_manualDeliveryDelaySeconds * 20L);
+                 SchedulerUtil.runLaterEntity(instance, player, task::run, instance.config_claims_manualDeliveryDelaySeconds * 20L);
              }
          }
  
@@ -713,7 +716,7 @@
  
                          //ban player
                          PlayerKickBanTask task = new PlayerKickBanTask(player, "", "GriefPrevention Smart Ban - Shared Login:" + info.bannedAccountName, true);
-                         instance.getServer().getScheduler().scheduleSyncDelayedTask(instance, task, 10L);
+                         SchedulerUtil.runLaterEntity(instance, player, task::run, 10L);
  
                          //silence join message
                          event.setJoinMessage("");
@@ -753,7 +756,7 @@
                  {
                      //kick player
                      PlayerKickBanTask task = new PlayerKickBanTask(player, instance.dataStore.getMessage(Messages.TooMuchIpOverlap), "GriefPrevention IP-sharing limit.", false);
-                     instance.getServer().getScheduler().scheduleSyncDelayedTask(instance, task, 100L);
+                     SchedulerUtil.runLaterEntity(instance, player, task::run, 100L);
  
                      //silence join message
                      event.setJoinMessage(null);
@@ -770,19 +773,14 @@
          {
              //If so, let him know and rescue him in 10 seconds. If he is in fact not trapped, hopefully chunks will have loaded by this time so he can walk out.
              GriefPrevention.sendMessage(player, TextMode.Info, Messages.NetherPortalTrapDetectionMessage, 20L);
-             new BukkitRunnable()
-             {
-                 @Override
-                 public void run()
+             SchedulerUtil.runLaterEntity(instance, player, () -> {
+                 if (player.getPortalCooldown() > 8 && player.hasMetadata("GP_PORTALRESCUE"))
                  {
-                     if (player.getPortalCooldown() > 8 && player.hasMetadata("GP_PORTALRESCUE"))
-                     {
-                         GriefPrevention.AddLogEntry("Rescued " + player.getName() + " from a nether portal.\nTeleported from " + player.getLocation().toString() + " to " + ((Location) player.getMetadata("GP_PORTALRESCUE").get(0).value()).toString(), CustomLogEntryTypes.Debug);
-                         player.teleport((Location) player.getMetadata("GP_PORTALRESCUE").get(0).value());
-                         player.removeMetadata("GP_PORTALRESCUE", instance);
-                     }
+                     GriefPrevention.AddLogEntry("Rescued " + player.getName() + " from a nether portal.\nTeleported from " + player.getLocation().toString() + " to " + ((Location) player.getMetadata("GP_PORTALRESCUE").get(0).value()).toString(), CustomLogEntryTypes.Debug);
+                     player.teleport((Location) player.getMetadata("GP_PORTALRESCUE").get(0).value());
+                     player.removeMetadata("GP_PORTALRESCUE", instance);
                  }
-             }.runTaskLater(instance, 200L);
+             }, 200L);
          }
          //Otherwise just reset cooldown, just in case they happened to logout again...
          else
@@ -795,10 +793,10 @@
              String joinMessage = event.getJoinMessage();
              if (joinMessage != null && !joinMessage.isEmpty())
              {
-                 Integer taskID = this.heldLogoutMessages.get(player.getUniqueId());
-                 if (taskID != null && Bukkit.getScheduler().isQueued(taskID))
+                 TaskHandle taskID = this.heldLogoutMessages.get(player.getUniqueId());
+                 if (taskID != null && taskID.isScheduled())
                  {
-                     Bukkit.getScheduler().cancelTask(taskID);
+                     taskID.cancel();
                      player.sendMessage(event.getJoinMessage());
                      event.setJoinMessage("");
                  }
@@ -859,7 +857,7 @@
      }
  
      //when a player quits...
-     private final HashMap<UUID, Integer> heldLogoutMessages = new HashMap<>();
+     private final HashMap<UUID, TaskHandle> heldLogoutMessages = new HashMap<>();
  
      @EventHandler(priority = EventPriority.HIGHEST)
      void onPlayerQuit(PlayerQuitEvent event)
@@ -926,8 +924,8 @@
              if (quitMessage != null && !quitMessage.isEmpty())
              {
                  BroadcastMessageTask task = new BroadcastMessageTask(quitMessage);
-                 int taskID = Bukkit.getScheduler().scheduleSyncDelayedTask(instance, task, 20L * instance.config_spam_logoutMessageDelaySeconds);
-                 this.heldLogoutMessages.put(playerID, taskID);
+                 TaskHandle handle = SchedulerUtil.runLaterGlobal(instance, task, 20L * instance.config_spam_logoutMessageDelaySeconds);
+                 this.heldLogoutMessages.put(playerID, handle);
                  event.setQuitMessage("");
              }
          }
@@ -1321,7 +1319,7 @@
              if (instance.claimsEnabledForWorld(player.getWorld()))
              {
                  EquipShovelProcessingTask task = new EquipShovelProcessingTask(player);
-                 instance.getServer().getScheduler().scheduleSyncDelayedTask(instance, task, 15L);  //15L is approx. 3/4 of a second
+                 SchedulerUtil.runLaterEntity(instance, player, task::run, 15L);  //15L is approx. 3/4 of a second
              }
          }
      }
@@ -1387,8 +1385,7 @@
                  List<Player> players = block.getWorld().getPlayers();
                  for (Player otherPlayer : players)
                  {
-                     Location location = otherPlayer.getLocation();
-                     if (!otherPlayer.equals(player) && otherPlayer.getGameMode() == GameMode.SURVIVAL && player.canSee(otherPlayer) && block.getY() >= location.getBlockY() - 1 && location.distanceSquared(block.getLocation()) < minLavaDistance * minLavaDistance)
+                     if (!otherPlayer.equals(player) && otherPlayer.getGameMode() == GameMode.SURVIVAL && player.canSee(otherPlayer) && block.getY() >= otherPlayer.getLocation().getBlockY() - 1 && otherPlayer.getLocation().distanceSquared(block.getLocation()) < minLavaDistance * minLavaDistance)
                      {
                          GriefPrevention.sendRateLimitedErrorMessage(player, Messages.NoLavaNearOtherPlayer, "another player");
                          bucketEvent.setCancelled(true);
@@ -2344,4 +2341,3 @@
          return result;
      }
  }
- 

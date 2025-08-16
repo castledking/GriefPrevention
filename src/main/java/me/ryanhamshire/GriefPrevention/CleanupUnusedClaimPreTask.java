@@ -20,6 +20,7 @@ package me.ryanhamshire.GriefPrevention;
 
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
+import me.ryanhamshire.GriefPrevention.util.SchedulerUtil;
 
 import java.util.UUID;
 
@@ -83,6 +84,6 @@ class CleanupUnusedClaimPreTask implements Runnable
         }
 
         //pass it back to the main server thread, where it's safe to delete a claim if needed
-        Bukkit.getScheduler().scheduleSyncDelayedTask(GriefPrevention.instance, new CleanupUnusedClaimTask(claimToExpire, ownerData, ownerInfo), 1L);
+        SchedulerUtil.runLaterGlobal(GriefPrevention.instance, new CleanupUnusedClaimTask(claimToExpire, ownerData, ownerInfo), 1L);
     }
 }

@@ -19,7 +19,7 @@
 package me.ryanhamshire.GriefPrevention;
 
 import com.google.common.io.Files;
-import org.bukkit.scheduler.BukkitScheduler;
+import me.ryanhamshire.GriefPrevention.util.SchedulerUtil;
 
 import java.io.File;
 import java.nio.charset.Charset;
@@ -52,11 +52,10 @@ class CustomLogger
         int daysToKeepLogs = GriefPrevention.instance.config_logs_daysToKeep;
         if (daysToKeepLogs > 0)
         {
-            BukkitScheduler scheduler = GriefPrevention.instance.getServer().getScheduler();
             final long ticksPerSecond = 20L;
             final long ticksPerDay = ticksPerSecond * 60 * 60 * 24;
-            scheduler.runTaskTimerAsynchronously(GriefPrevention.instance, new EntryWriter(), this.secondsBetweenWrites * ticksPerSecond, this.secondsBetweenWrites * ticksPerSecond);
-            scheduler.runTaskTimerAsynchronously(GriefPrevention.instance, new ExpiredLogRemover(), ticksPerDay, ticksPerDay);
+            SchedulerUtil.runRepeatingGlobal(GriefPrevention.instance, new EntryWriter(), this.secondsBetweenWrites * ticksPerSecond, this.secondsBetweenWrites * ticksPerSecond);
+            SchedulerUtil.runRepeatingGlobal(GriefPrevention.instance, new ExpiredLogRemover(), ticksPerDay, ticksPerDay);
         }
     }
 
