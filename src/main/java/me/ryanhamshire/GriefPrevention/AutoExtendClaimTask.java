@@ -20,7 +20,11 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
+import java.util.OptionalInt;
 import java.util.Set;
+
+import me.ryanhamshire.GriefPrevention.util.SchedulerUtil;
+import java.util.function.Consumer;
 
 //automatically extends a claim downward based on block types detected
 public class AutoExtendClaimTask implements Runnable
@@ -54,14 +58,21 @@ public class AutoExtendClaimTask implements Runnable
                     {
                         // Find the lowest non-natural storage block in the chunk.
                         // This way chests, barrels, etc. are always protected even if player block definitions are lacking.
-                        lowestLootableTile = Math.min(lowestLootableTile, Arrays.stream(chunk.getTileEntities())
-                                // Accept only Lootable tiles that do not have loot tables.
-                                // Naturally generated Lootables only have a loot table reference until the container is
-                                // accessed. On access the loot table is used to calculate the contents and removed.
-                                // This prevents claims from always extending over unexplored structures, spawners, etc.
-                                .filter(tile -> tile instanceof Lootable lootable && lootable.getLootTable() == null)
-                                // Return smallest value or default to existing min Y if no eligible tiles are present.
-                                .mapToInt(BlockState::getY).min().orElse(lowestLootableTile));
+                        {
+                            OptionalInt lowestInChunk = Arrays.stream(chunk.getTileEntities())
+                                    // Accept only Lootable tiles that do not have loot tables.
+                                    // Naturally generated Lootables only have a loot table reference until the container is
+                                    // accessed. On access the loot table is used to calculate the contents and removed.
+                                    // This prevents claims from always extending over unexplored structures, spawners, etc.
+                                    .filter(tile -> tile instanceof Lootable lootable && lootable.getLootTable() == null)
+                                    // Return smallest value if present.
+                                    .mapToInt(BlockState::getY)
+                                    .min();
+                            if (lowestInChunk.isPresent())
+                            {
+                                lowestLootableTile = Math.min(lowestLootableTile, lowestInChunk.getAsInt());
+                            }
+                        }
                     }
 
                     // Save a snapshot of the chunk for more detailed async block searching.
@@ -70,9 +81,27 @@ public class AutoExtendClaimTask implements Runnable
             }
         }
 
-        Bukkit.getScheduler().runTaskAsynchronously(
-                GriefPrevention.instance,
-                new AutoExtendClaimTask(claim, snapshots, world.getEnvironment(), lowestLootableTile));
+        // Prefer Folia/Paper AsyncScheduler if available; fallback to Bukkit async scheduler
+        final int finalLowestLootableTile = lowestLootableTile;
+        try {
+            // Bukkit.getAsyncScheduler().runNow(plugin, Consumer<ScheduledTask>)
+            Object asyncScheduler = Bukkit.class.getMethod("getAsyncScheduler").invoke(null);
+            Consumer<Object> consumer = (ignored) -> new AutoExtendClaimTask(claim, snapshots, world.getEnvironment(), finalLowestLootableTile).run();
+            try {
+                // new API may accept Runnable directly in some builds; try Consumer first
+                asyncScheduler.getClass().getMethod("runNow", org.bukkit.plugin.Plugin.class, java.util.function.Consumer.class)
+                        .invoke(asyncScheduler, GriefPrevention.instance, consumer);
+            } catch (NoSuchMethodException e) {
+                // Fallback: try Runnable signature if present
+                asyncScheduler.getClass().getMethod("runNow", org.bukkit.plugin.Plugin.class, java.lang.Runnable.class)
+                        .invoke(asyncScheduler, GriefPrevention.instance, (Runnable) () -> new AutoExtendClaimTask(claim, snapshots, world.getEnvironment(), finalLowestLootableTile).run());
+            }
+        } catch (Throwable ignored) {
+            // Non-Paper/Folia fallback
+            Bukkit.getScheduler().runTaskAsynchronously(
+                    GriefPrevention.instance,
+                    new AutoExtendClaimTask(claim, snapshots, world.getEnvironment(), finalLowestLootableTile));
+        }
     }
 
     private final Claim claim;
@@ -109,7 +138,7 @@ public class AutoExtendClaimTask implements Runnable
         int newY = this.getLowestBuiltY();
         if (newY < this.claim.getLesserBoundaryCorner().getBlockY())
         {
-            Bukkit.getScheduler().runTask(GriefPrevention.instance, new ExecuteExtendClaimTask(claim, newY));
+            SchedulerUtil.runLaterGlobal(GriefPrevention.instance, new ExecuteExtendClaimTask(claim, newY), 1);
         }
     }
 

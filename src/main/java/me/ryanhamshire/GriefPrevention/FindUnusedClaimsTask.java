@@ -56,7 +56,7 @@ class FindUnusedClaimsTask implements Runnable
             return;
         }
 
-        SchedulerUtil.runLaterGlobal(GriefPrevention.instance, new CleanupUnusedClaimPreTask(claimOwnerIterator.next()), 0L);
+        SchedulerUtil.runLaterGlobal(GriefPrevention.instance, new CleanupUnusedClaimPreTask(claimOwnerIterator.next()), 1L);
     }
 
     public void refreshUUIDs()
