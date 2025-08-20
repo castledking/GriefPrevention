@@ -56,7 +56,8 @@ class FindUnusedClaimsTask implements Runnable
             return;
         }
 
-        SchedulerUtil.runLaterGlobal(GriefPrevention.instance, new CleanupUnusedClaimPreTask(claimOwnerIterator.next()), 1L);
+        // Run the pretask asynchronously to avoid blocking Folia region/global threads with disk I/O
+        SchedulerUtil.runAsyncNow(GriefPrevention.instance, new CleanupUnusedClaimPreTask(claimOwnerIterator.next()));
     }
 
     public void refreshUUIDs()

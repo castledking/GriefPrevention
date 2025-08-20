@@ -38,6 +38,18 @@ public final class SchedulerUtil {
         }
     }
 
+    // Helper to obtain Folia's AsyncScheduler via reflection (static or instance accessor)
+    private static Object getAsyncScheduler() throws Exception {
+        try {
+            Method staticGetter = Bukkit.class.getMethod("getAsyncScheduler");
+            return staticGetter.invoke(null);
+        } catch (Throwable ignored) {
+            Object server = Bukkit.getServer();
+            Method instanceGetter = server.getClass().getMethod("getAsyncScheduler");
+            return instanceGetter.invoke(server);
+        }
+    }
+
     public static TaskHandle runLaterGlobal(Plugin plugin, Runnable runnable, long delayTicks) {
         Objects.requireNonNull(plugin);
         Objects.requireNonNull(runnable);
@@ -97,6 +109,72 @@ public final class SchedulerUtil {
         }
         // Non-Folia fallback
         BukkitTask task = Bukkit.getScheduler().runTaskTimer(plugin, runnable, delayTicks, periodTicks);
+        return new TaskHandle(task);
+    }
+
+    // Schedules a task on Folia's AsyncScheduler (or Bukkit async fallback) immediately.
+    public static TaskHandle runAsyncNow(Plugin plugin, Runnable runnable) {
+        Objects.requireNonNull(plugin);
+        Objects.requireNonNull(runnable);
+        if (FOLIA_PRESENT) {
+            try {
+                Object async = getAsyncScheduler();
+                Consumer<Object> consumer = (ignored2) -> runnable.run();
+                // Prefer runNow(Plugin, Consumer)
+                for (Method m : async.getClass().getMethods()) {
+                    if (!m.getName().equals("runNow")) continue;
+                    Class<?>[] params = m.getParameterTypes();
+                    if (params.length >= 2 && Plugin.class.isAssignableFrom(params[0]) && Consumer.class.isAssignableFrom(params[1])) {
+                        Object scheduled = (params.length == 2)
+                                ? m.invoke(async, plugin, consumer)
+                                : m.invoke(async, plugin, consumer, (Object[]) java.lang.reflect.Array.newInstance(Object.class, params.length - 2));
+                        return new TaskHandle(scheduled);
+                    }
+                }
+                // Fallback: emulate immediate with zero-delay runDelayed
+                try {
+                    Method runDelayed = async.getClass().getMethod("runDelayed", Plugin.class, Consumer.class, long.class);
+                    Object scheduled = runDelayed.invoke(async, plugin, consumer, 0L);
+                    return new TaskHandle(scheduled);
+                } catch (NoSuchMethodException e) {
+                    Method runDelayed = async.getClass().getMethod("runDelayed", Plugin.class, Consumer.class, long.class, TimeUnit.class);
+                    Object scheduled = runDelayed.invoke(async, plugin, consumer, 0L, TimeUnit.MILLISECONDS);
+                    return new TaskHandle(scheduled);
+                }
+            } catch (Throwable t) {
+                throw new UnsupportedOperationException("Folia detected but failed to schedule on AsyncScheduler", t);
+            }
+        }
+        // Non-Folia fallback
+        BukkitTask task = Bukkit.getScheduler().runTaskAsynchronously(plugin, runnable);
+        return new TaskHandle(task);
+    }
+
+    // Schedules a task on Folia's AsyncScheduler (or Bukkit async fallback) after a delay in ticks.
+    public static TaskHandle runAsyncLater(Plugin plugin, Runnable runnable, long delayTicks) {
+        Objects.requireNonNull(plugin);
+        Objects.requireNonNull(runnable);
+        long safeDelay = Math.max(0L, delayTicks);
+        if (FOLIA_PRESENT) {
+            try {
+                Object async = getAsyncScheduler();
+                Consumer<Object> consumer = (ignored2) -> runnable.run();
+                try {
+                    Method runDelayed = async.getClass().getMethod("runDelayed", Plugin.class, Consumer.class, long.class);
+                    Object scheduled = runDelayed.invoke(async, plugin, consumer, safeDelay);
+                    return new TaskHandle(scheduled);
+                } catch (NoSuchMethodException e) {
+                    Method runDelayed = async.getClass().getMethod("runDelayed", Plugin.class, Consumer.class, long.class, TimeUnit.class);
+                    long delayMs = safeDelay * 50L;
+                    Object scheduled = runDelayed.invoke(async, plugin, consumer, delayMs, TimeUnit.MILLISECONDS);
+                    return new TaskHandle(scheduled);
+                }
+            } catch (Throwable t) {
+                throw new UnsupportedOperationException("Folia detected but failed to schedule delayed task on AsyncScheduler", t);
+            }
+        }
+        // Non-Folia fallback
+        BukkitTask task = Bukkit.getScheduler().runTaskLaterAsynchronously(plugin, runnable, safeDelay);
         return new TaskHandle(task);
     }
 
