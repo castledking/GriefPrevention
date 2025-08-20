@@ -551,7 +551,9 @@ public class BlockEventHandler implements Listener
         BlockFace direction = event.getDirection();
         Block pistonBlock = event.getBlock();
         Claim pistonClaim = this.dataStore.getClaimAt(pistonBlock.getLocation(), false,
-                pistonMode != PistonMode.CLAIMS_ONLY, null);
+                // IMPORTANT: Always resolve the most specific claim (include subclaims) so piston in a subclaim
+                // uses that subclaim as its initiatingClaim. This avoids false conflicts in 2D subclaims.
+                false, null);
 
         // A claim is required, but the piston is not inside a claim.
         if (pistonClaim == null && pistonMode == PistonMode.CLAIMS_ONLY)
@@ -567,9 +569,15 @@ public class BlockEventHandler implements Listener
             if (isRetract) return;
 
             Block invadedBlock = pistonBlock.getRelative(direction);
+            // IMPORTANT: Do not ignore subdivisions here; we need the most specific claim (including 2D/3D subclaims).
             Claim invadedClaim = this.dataStore.getClaimAt(invadedBlock.getLocation(), false,
-                    pistonMode != PistonMode.CLAIMS_ONLY, pistonClaim);
-            if (invadedClaim != null && (pistonClaim == null || !Objects.equals(pistonClaim.getOwnerID(), invadedClaim.getOwnerID())))
+                    false, pistonClaim);
+
+            // For EVERYWHERE/EVERYWHERE_SIMPLE, cancel only when entering a different claim tree (different root).
+            // Allow within same parent/subclaim tree and into wilderness.
+            Claim rootPiston = rootOf(pistonClaim);
+            Claim rootInvaded = rootOf(invadedClaim);
+            if (invadedClaim != null && (rootPiston == null || !Objects.equals(rootPiston.getID(), rootInvaded.getID())))
             {
                 event.setCancelled(true);
             }
@@ -659,6 +667,21 @@ public class BlockEventHandler implements Listener
 
             // Do additional mode-based handling.
             if (precisePredicate.test(claim, claimBoundingBox)) return true;
+
+            // Also consider child subdivisions (including 2D subclaims) which are not in the chunk map.
+            if (!claim.children.isEmpty())
+            {
+                for (Claim child : claim.children)
+                {
+                    if (!child.inDataStore) continue;
+                    // Skip the initiating child claim to avoid redundant self-conflict checks.
+                    if (initiatingClaim != null && Objects.equals(child.getID(), initiatingClaim.getID())) continue;
+                    BoundingBox childBox = new BoundingBox(child);
+                    if (!childBox.intersects(boundingBox)) continue;
+
+                    if (precisePredicate.test(child, childBox)) return true;
+                }
+            }
         }
 
         return false;
@@ -675,8 +698,10 @@ public class BlockEventHandler implements Listener
     {
         return (claim, claimBoundingBox) ->
         {
-            // If owners are different, cancel.
-            return initiatingClaim == null || !Objects.equals(initiatingClaim.getOwnerID(), claim.getOwnerID());
+            // Deny when the root claim (parent tree) differs.
+            Claim rootInit = rootOf(initiatingClaim);
+            Claim rootOther = rootOf(claim);
+            return rootInit == null || rootOther == null || !Objects.equals(rootInit.getID(), rootOther.getID());
         };
     }
 
@@ -712,8 +737,10 @@ public class BlockEventHandler implements Listener
             // Ensure that the claim contains an affected block.
             if (containsNone(claimBoundingBox, checkBlocks)) return false;
 
-            // If pushing this block will change ownership, "explode" the piston for performance reasons.
-            if (pistonClaim == null || !Objects.equals(pistonClaim.getOwnerID(), claim.getOwnerID()))
+            // If pushing this block will cross into a different claim tree, "explode" the piston for performance reasons.
+            Claim rootPiston = rootOf(pistonClaim);
+            Claim rootOther = rootOf(claim);
+            if (rootPiston == null || rootOther == null || !Objects.equals(rootPiston.getID(), rootOther.getID()))
             {
                 if (GriefPrevention.instance.config_pistonExplosionSound)
                 {
@@ -742,6 +769,14 @@ public class BlockEventHandler implements Listener
         }
 
         return true;
+    }
+
+    private static @Nullable Claim rootOf(@Nullable Claim claim)
+    {
+        if (claim == null) return null;
+        Claim c = claim;
+        while (c.parent != null) c = c.parent;
+        return c;
     }
 
     //blocks are ignited ONLY by flint and steel (not by being near lava, open flames, etc), unless configured otherwise

@@ -163,6 +163,23 @@ public class FakeBlockVisualization extends BlockBoundaryVisualization
             addDisplayed3D(displayZone, new IntVector(area.getMaxX(), y, area.getMaxZ()), addCorner);
             addDisplayed3D(displayZone, new IntVector(area.getMinX(), y, area.getMinZ()), addCorner);
             addDisplayed3D(displayZone, new IntVector(area.getMaxX(), y, area.getMinZ()), addCorner);
+
+            // Vertical indicator: exactly one white wool block above bottom corners and below top corners
+            int verticalY;
+            if (y == claimMinY) {
+                verticalY = y + 1; // one block above bottom ring
+            } else if (y == claimMaxY) {
+                verticalY = y - 1; // one block below top ring
+            } else {
+                continue; // shouldn't happen, but guards future changes
+            }
+            if (verticalY >= world.getMinHeight() && verticalY <= world.getMaxHeight()) {
+                // reuse exact-placement white wool consumer for 3D sides
+                addDisplayed3D(displayZone, new IntVector(area.getMinX(), verticalY, area.getMaxZ()), addSide);
+                addDisplayed3D(displayZone, new IntVector(area.getMaxX(), verticalY, area.getMaxZ()), addSide);
+                addDisplayed3D(displayZone, new IntVector(area.getMinX(), verticalY, area.getMinZ()), addSide);
+                addDisplayed3D(displayZone, new IntVector(area.getMaxX(), verticalY, area.getMinZ()), addSide);
+            }
         }
     }
 
