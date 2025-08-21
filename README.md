@@ -23,7 +23,7 @@ Stop _responding_ to grief and prevent it instead. GriefPrevention stops grief b
 Other server implementations of the Bukkit API _should_ work, but are untested.
 
 ## Download
-### [Download the GriefPrevention.jar plugin here.](https://github.com/castledking/GriefPrevention/releases/tag/17.0.0)
+### [Download the GriefPrevention.jar plugin here.](https://github.com/castledking/GriefPrevention/releases)
 
 ## Addons
 ### [Addons](https://r.griefprevention.com/addons) provide additional features to GriefPrevention. Some of these addons are listed in [GitHub Discussions](https://r.griefprevention.com/addons)
