@@ -652,12 +652,16 @@ public abstract class DataStore
 
     synchronized void deleteClaim(Claim claim, boolean fireEvent, boolean ignored)
     {
-        //delete any children
-        for (int j = 1; (j - 1) < claim.children.size(); j++)
+        // delete any children (iterate over a snapshot to avoid skipping due to parent list mutation)
+        if (!claim.children.isEmpty())
         {
-            this.deleteClaim(claim.children.get(j - 1), fireEvent, ignored);
+            java.util.List<Claim> childrenSnapshot = new java.util.ArrayList<>(claim.children);
+            for (Claim child : childrenSnapshot)
+            {
+                this.deleteClaim(child, fireEvent, ignored);
+            }
         }
-
+         
         //subdivisions must also be removed from the parent claim child list
         if (claim.parent != null)
         {
@@ -702,6 +706,25 @@ public abstract class DataStore
                 }
             }
             this.savePlayerData(claim.ownerID, ownerData);
+        }
+
+        // Proactively clear any active visualizations referencing this claim for all online players
+        // to prevent lingering ghost boundaries after deletion.
+        try {
+            org.bukkit.Server server = org.bukkit.Bukkit.getServer();
+            for (org.bukkit.entity.Player online : server.getOnlinePlayers())
+            {
+                PlayerData data = GriefPrevention.instance.dataStore.getPlayerData(online.getUniqueId());
+                com.griefprevention.visualization.BoundaryVisualization bv = data.getVisibleBoundaries();
+                if (bv != null)
+                {
+                    // If the player has any active visualization, conservatively clear it.
+                    // This guarantees no stale visualization for deleted claims and their children.
+                    data.setVisibleBoundaries(null);
+                }
+            }
+        } catch (Exception ignoredEx) {
+            // Visualization cleanup is best-effort; ignore any exceptions to avoid interfering with deletion.
         }
 
         if (fireEvent)
@@ -759,7 +782,10 @@ public abstract class DataStore
                         {
                             int currentYRange = claim.getGreaterBoundaryCorner().getBlockY() - claim.getLesserBoundaryCorner().getBlockY();
                             int bestYRange = better3D.getGreaterBoundaryCorner().getBlockY() - better3D.getLesserBoundaryCorner().getBlockY();
-                            if (currentYRange < bestYRange || (currentYRange == bestYRange && claim.getArea() < better3D.getArea()))
+                            
+                            // Prefer the claim with smaller Y-range (more specific), or smaller area if Y-ranges are equal
+                            if (currentYRange < bestYRange || 
+                                (currentYRange == bestYRange && claim.getArea() < better3D.getArea()))
                             {
                                 better3D = claim;
                             }
@@ -1311,7 +1337,12 @@ public abstract class DataStore
 
         final int depth = sanitizeClaimDepth(claim, newDepth);
 
-        Stream.concat(Stream.of(claim), claim.children.stream()).forEach(localClaim -> {
+        // Adjust depth for the parent claim and NON-3D children only.
+        // 3D subdivisions have explicit Y bounds and must not be altered here.
+        Stream.concat(
+                Stream.of(claim),
+                claim.children.stream().filter(child -> !child.is3D())
+        ).forEach(localClaim -> {
             localClaim.lesserBoundaryCorner.setY(depth);
             localClaim.greaterBoundaryCorner.setY(Math.max(localClaim.greaterBoundaryCorner.getBlockY(), depth));
             this.saveClaim(localClaim);

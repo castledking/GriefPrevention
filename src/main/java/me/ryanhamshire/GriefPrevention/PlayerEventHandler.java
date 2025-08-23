@@ -31,8 +31,8 @@
  import org.bukkit.GameMode;
  import org.bukkit.Location;
  import org.bukkit.Material;
- import org.bukkit.OfflinePlayer;
- import org.bukkit.Tag;
+import org.bukkit.OfflinePlayer;
+import org.bukkit.Tag;
  import org.bukkit.World;
  import org.bukkit.World.Environment;
  import org.bukkit.block.Block;
@@ -89,6 +89,7 @@
  import org.bukkit.profile.PlayerProfile;
  import org.bukkit.scheduler.BukkitRunnable;
  import org.bukkit.util.BlockIterator;
+ import org.bukkit.util.Vector;
  import org.jetbrains.annotations.NotNull;
  
  import java.net.InetAddress;
@@ -1815,11 +1816,15 @@
                  //air indicates too far away
                  if (clickedBlockType == Material.AIR)
                  {
-                     GriefPrevention.sendRateLimitedErrorMessage(player, Messages.TooFarAway);
+                     if (materialInHand != instance.config_claims_modificationTool)
+                     {
+                         GriefPrevention.sendRateLimitedErrorMessage(player, Messages.TooFarAway);
  
-                     // Remove visualizations
-                     playerData.setVisibleBoundaries(null);
-                     return;
+                         // Remove visualizations
+                         playerData.setVisibleBoundaries(null);
+                         return;
+                     }
+                     // else: do not message/return here; shovel path below will handle it
                  }
  
                  Claim claim = this.dataStore.getClaimAt(clickedBlock.getLocation(), false /*ignore height*/, playerData.lastClaim);
@@ -1882,13 +1887,25 @@
              else if (materialInHand != instance.config_claims_modificationTool || hand != EquipmentSlot.HAND) return;
  
              event.setCancelled(true);  //GriefPrevention exclusively reserves this tool  (e.g. no grass path creation for golden shovel)
+             boolean cornerSelected = false; // track if we snapped to a 3D corner so AIR guard can be bypassed
  
              //FEATURE: shovel and stick can be used from a distance away
              if (action == Action.RIGHT_CLICK_AIR)
              {
-                 //try to find a far away non-air block along line of sight
-                 clickedBlock = getTargetBlock(player, 100);
-                 clickedBlockType = clickedBlock.getType();
+                 // Try to snap to a nearby 3D subclaim corner along the player's view ray
+                 CornerHit cornerHit = raycast3DSubclaimCorner(player, 100);
+                 if (cornerHit != null)
+                 {
+                     clickedBlock = player.getWorld().getBlockAt(cornerHit.x, cornerHit.y, cornerHit.z);
+                     clickedBlockType = clickedBlock.getType();
+                     cornerSelected = true;
+                 }
+                 else
+                 {
+                     //try to find a far away non-air block along line of sight
+                     clickedBlock = getTargetBlock(player, 100);
+                     clickedBlockType = clickedBlock.getType();
+                 }
              }
  
              //if no block, stop here
@@ -1897,12 +1914,8 @@
                  return;
              }
  
-             //can't use the shovel from too far away
-             if (clickedBlockType == Material.AIR)
-             {
-                 GriefPrevention.sendMessage(player, TextMode.Err, Messages.TooFarAway);
-                 return;
-             }
+             //can't use the shovel from too far away, unless we snapped to a 3D corner (corner itself may be air)
+             if (clickedBlockType == Material.AIR && !cornerSelected) return;
  
              //if the player doesn't have claims permission, don't do anything
              if (!player.hasPermission("griefprevention.createclaims"))
@@ -2268,24 +2281,69 @@
          }
      }
  
-     // Stops an untrusted player from removing a book from a lectern
-     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
-     void onTakeBook(PlayerTakeLecternBookEvent event)
+     // Helper container for a corner raycast hit
+     private static class CornerHit {
+         final Claim claim;
+         final int x, y, z;
+         final double t;
+         CornerHit(Claim claim, int x, int y, int z, double t) {
+             this.claim = claim; this.x = x; this.y = y; this.z = z; this.t = t;
+         }
+     }
+ 
+     // Raycast from player's eye to detect intersection near any 3D subclaim corner within maxDistance.
+     // Returns the closest corner hit along the ray, or null if none.
+     private CornerHit raycast3DSubclaimCorner(Player player, int maxDistance)
      {
-         Player player = event.getPlayer();
-         PlayerData playerData = this.dataStore.getPlayerData(player.getUniqueId());
-         Claim claim = this.dataStore.getClaimAt(event.getLectern().getLocation(), false, playerData.lastClaim);
-         if (claim != null)
+         Vector eyePos = player.getEyeLocation().toVector();
+         Vector dir = player.getEyeLocation().getDirection().normalize();
+         World world = player.getWorld();
+ 
+         CornerHit best = null;
+         double bestT = Double.POSITIVE_INFINITY;
+         double threshold = 1.2; // be more forgiving when aiming at corners
+ 
+         for (Claim parent : this.dataStore.getClaims())
          {
-             playerData.lastClaim = claim;
-             Supplier<String> noContainerReason = claim.checkPermission(player, ClaimPermission.Inventory, event);
-             if (noContainerReason != null)
+             if (parent == null || parent.children.isEmpty()) continue;
+             if (parent.getLesserBoundaryCorner().getWorld() != world) continue;
+ 
+             for (Claim child : parent.children)
              {
-                 event.setCancelled(true);
-                 player.closeInventory();
-                 GriefPrevention.sendRateLimitedErrorMessage(player, noContainerReason.get());
+                 if (!child.is3D() || !child.inDataStore) continue;
+ 
+                 int x1 = child.getLesserBoundaryCorner().getBlockX();
+                 int x2 = child.getGreaterBoundaryCorner().getBlockX();
+                 int y1 = child.getLesserBoundaryCorner().getBlockY();
+                 int y2 = child.getGreaterBoundaryCorner().getBlockY();
+                 int z1 = child.getLesserBoundaryCorner().getBlockZ();
+                 int z2 = child.getGreaterBoundaryCorner().getBlockZ();
+ 
+                 int[] xs = new int[] { x1, x2 };
+                 int[] ys = new int[] { y1, y2 };
+                 int[] zs = new int[] { z1, z2 };
+ 
+                 for (int xi : xs)
+                     for (int yi : ys)
+                         for (int zi : zs)
+                         {
+                             // Use the true corner vertex instead of block center
+                             Vector p = new Vector(xi, yi, zi);
+                             Vector v = p.clone().subtract(eyePos);
+                             double t = v.dot(dir);
+                             if (t < 0 || t > maxDistance) continue; // behind or too far
+                             Vector closest = eyePos.clone().add(dir.clone().multiply(t));
+                             double dist = closest.distance(p);
+                             if (dist <= threshold && t < bestT)
+                             {
+                                 bestT = t;
+                                 best = new CornerHit(child, xi, yi, zi, t);
+                             }
+                         }
              }
          }
+ 
+         return best;
      }
  
      //determines whether a block type is an inventory holder.  uses a caching strategy to save cpu time
