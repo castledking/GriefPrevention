@@ -2398,4 +2398,25 @@ import org.bukkit.Tag;
  
          return result;
      }
+ 
+     // Stops an untrusted player from removing a book from a lectern
+     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+     void onTakeBook(PlayerTakeLecternBookEvent event)
+     {
+         Player player = event.getPlayer();
+         PlayerData playerData = this.dataStore.getPlayerData(player.getUniqueId());
+
+         Claim claim = this.dataStore.getClaimAt(event.getLectern().getLocation(), false, playerData.lastClaim);
+         if (claim != null)
+         {
+             playerData.lastClaim = claim;
+             Supplier<String> noContainerReason = claim.checkPermission(player, ClaimPermission.Inventory, event);
+             if (noContainerReason != null)
+             {
+                 event.setCancelled(true);
+                 player.closeInventory();
+                 GriefPrevention.sendRateLimitedErrorMessage(player, noContainerReason.get());
+             }
+         }
+     }
  }
