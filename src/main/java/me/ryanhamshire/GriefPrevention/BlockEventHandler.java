@@ -71,6 +71,7 @@ import org.bukkit.event.world.PortalCreateEvent;
 import org.bukkit.event.world.StructureGrowEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.metadata.MetadataValue;
+import me.ryanhamshire.GriefPrevention.PlayerEventHandler;
 import org.bukkit.projectiles.BlockProjectileSource;
 import org.bukkit.projectiles.ProjectileSource;
 import org.jetbrains.annotations.NotNull;
@@ -130,9 +131,18 @@ public class BlockEventHandler implements Listener
         Supplier<String> noBuildReason = ProtectionHelper.checkPermission(player, block.getLocation(), ClaimPermission.Build, breakEvent);
         if (noBuildReason != null)
         {
-            GriefPrevention.sendMessage(player, TextMode.Err, noBuildReason.get());
+            GriefPrevention.sendRateLimitedErrorMessage(player, noBuildReason.get());
             breakEvent.setCancelled(true);
             return;
+        }
+
+        // If a boundary visualization is active for this player, let it react to the break
+        // so it can remove only the element(s) at this location for better UX.
+        PlayerData playerData = this.dataStore.getPlayerData(player.getUniqueId());
+        com.griefprevention.visualization.BoundaryVisualization active = playerData.getVisibleBoundaries();
+        if (active != null)
+        {
+            active.handleBlockBreak(player, block);
         }
     }
 
@@ -176,6 +186,47 @@ public class BlockEventHandler implements Listener
             event.setCancelled(true);
             return;
         }
+        
+        // Check for and censor banned words in sign text
+        if (!player.hasPermission("griefprevention.spam"))
+        {
+            PlayerEventHandler playerEventHandler = GriefPrevention.instance.playerEventHandler;
+            WordFinder wordFinder = playerEventHandler.getBannedWordFinder();
+            boolean modified = false;
+            
+            // Check each line for banned words
+            for (int i = 0; i < event.getLines().length; i++)
+            {
+                String originalLine = event.getLine(i);
+                if (originalLine == null || originalLine.isEmpty()) continue;
+                
+                String censoredLine = wordFinder.censor(originalLine);
+                if (!originalLine.equals(censoredLine))
+                {
+                    event.setLine(i, censoredLine);
+                    modified = true;
+                }
+            }
+            
+            // Notify staff if sign was modified
+            if (modified && GriefPrevention.instance.config_signNotifications)
+            {
+                String notifyMessage = ChatColor.GRAY + player.getName() + " placed a sign with censored content at " + 
+                                    GriefPrevention.getfriendlyLocationString(event.getBlock().getLocation());
+                
+                for (Player onlinePlayer : GriefPrevention.instance.getServer().getOnlinePlayers())
+                {
+                    if (onlinePlayer.hasPermission("griefprevention.eavesdrop.signs") && !onlinePlayer.equals(player))
+                    {
+                        onlinePlayer.sendMessage(notifyMessage);
+                    }
+                }
+                
+                // Log to console
+                GriefPrevention.AddLogEntry(player.getName() + " placed a sign with censored content at " + 
+                                         event.getBlock().getLocation().toString(), CustomLogEntryTypes.AdminActivity, false);
+            }
+        }
 
         PlayerData playerData = this.dataStore.getPlayerData(player.getUniqueId());
         //if not empty and wasn't the same as the last sign, log it and remember it for later
@@ -187,13 +238,13 @@ public class BlockEventHandler implements Listener
             PlayerEventHandler.makeSocialLogEntry(player.getName(), signMessage);
             //playerData.lastSignMessage = signMessage;
 
-            if (!player.hasPermission("griefprevention.eavesdropsigns"))
+            if (!player.hasPermission("griefprevention.eavesdrop.signs"))
             {
                 @SuppressWarnings("unchecked")
                 Collection<Player> players = (Collection<Player>) GriefPrevention.instance.getServer().getOnlinePlayers();
                 for (Player otherPlayer : players)
                 {
-                    if (otherPlayer.hasPermission("griefprevention.eavesdropsigns"))
+                    if (otherPlayer.hasPermission("griefprevention.eavesdrop.signs"))
                     {
                         otherPlayer.sendMessage(ChatColor.GRAY + player.getName() + signMessage);
                     }
@@ -261,7 +312,7 @@ public class BlockEventHandler implements Listener
                 Location location = otherPlayer.getLocation();
                 if (!otherPlayer.equals(player) && location.distanceSquared(block.getLocation()) < 9 && player.canSee(otherPlayer))
                 {
-                    GriefPrevention.sendMessage(player, TextMode.Err, Messages.PlayerTooCloseForFire2);
+                    GriefPrevention.sendRateLimitedErrorMessage(player, Messages.PlayerTooCloseForFire2);
                     placeEvent.setCancelled(true);
                     return;
                 }
@@ -288,11 +339,11 @@ public class BlockEventHandler implements Listener
                         return;
 
                     placeEvent.setCancelled(true);
-                    GriefPrevention.sendMessage(player, TextMode.Err, noContainerReason.get());
+                    GriefPrevention.sendRateLimitedErrorMessage(player, noContainerReason.get());
                     return;
                 }
             }
-            GriefPrevention.sendMessage(player, TextMode.Err, noBuildReason.get());
+            GriefPrevention.sendRateLimitedErrorMessage(player, noBuildReason.get());
             placeEvent.setCancelled(true);
             return;
         }

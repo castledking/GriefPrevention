@@ -167,6 +167,7 @@ public enum Messages
     ClaimCreationFailedOverClaimCountLimit("You've reached your limit on land claims.  Use /abandonclaim to remove one before creating another."),
     CreateClaimFailOverlapRegion("You can't claim all of this because you're not allowed to build here."),
     ResizeFailOverlapRegion("You don't have permission to build there, so you can't claim that area."),
+    ResizeFailSubdivision("Cannot resize claim: The new boundaries would exclude an existing subdivision. Please remove or move the subdivision first."),
     ShowNearbyClaims("Found {0} land claims.", "0: Number of claims found."),
     NoChatUntilMove("Sorry, but you have to move a little more before you can chat.  We get lots of spam bots here.  :)"),
     SetClaimBlocksSuccess("Updated accrued claim blocks."),

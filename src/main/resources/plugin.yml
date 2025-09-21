@@ -209,11 +209,13 @@ permissions:
             griefprevention.transferclaim: true
             griefprevention.claimslistother: true
             griefprevention.separate: true
-            griefprevention.eavesdropsigns: true
+            griefprevention.eavesdrop.signs: true
+            griefprevention.eavesdrop.pm: true
+            griefprevention.eavesdrop.softmute: true
             griefprevention.claimbook: true
             griefprevention.notignorable: true
             griefprevention.seeinactivity: true
-            griefprevention.eavesdropimmune: true
+            griefprevention.eavesdrop.immune: true
             griefprevention.deleteclaimsinworld: true
             griefprevention.unlockothersdrops: true
             griefprevention.seeclaimsize: true
@@ -256,7 +258,13 @@ permissions:
     griefprevention.eavesdrop:
         description: Allows a player to see whispered chat messages (/tell) and softmuted messages.
         default: op
-    griefprevention.eavesdropsigns:
+    griefprevention.eavesdrop.pm:
+        description: Allows a player to see whispered chat messages (/tell).
+        default: op
+    griefprevention.eavesdrop.softmute:
+        description: Allows a player to see softmuted messages.
+        default: op
+    griefprevention.eavesdrop.signs:
         description: Allows a player to see sign placements as chat messages.
         default: op
     griefprevention.reload:

@@ -24,7 +24,6 @@ import com.griefprevention.visualization.VisualizationType;
 import me.ryanhamshire.GriefPrevention.events.ClaimCreatedEvent;
 import me.ryanhamshire.GriefPrevention.events.ClaimDeletedEvent;
 import me.ryanhamshire.GriefPrevention.events.ClaimExtendEvent;
-import me.ryanhamshire.GriefPrevention.events.ClaimModifiedEvent;
 import me.ryanhamshire.GriefPrevention.events.ClaimResizeEvent;
 import me.ryanhamshire.GriefPrevention.events.ClaimTransferEvent;
 import me.ryanhamshire.GriefPrevention.util.BoundingBox;
@@ -909,6 +908,15 @@ public abstract class DataStore
         // Return 3D claim if found, otherwise return smallest non-3D claim
         Claim result = smallest3DClaim != null ? smallest3DClaim : smallestClaim;
 
+        // If we have both a 3D and 2D claim, but the 3D claim doesn't contain the Y coordinate,
+        // we should still prefer the 2D claim over the 3D one if the 3D claim's Y range doesn't match
+        if (smallest3DClaim != null && smallestClaim != null && smallest3DClaim != smallestClaim) {
+            if (!smallest3DClaim.containsY(location.getBlockY())) {
+                // If the 3D claim doesn't contain the Y coordinate, prefer the 2D claim
+                result = smallestClaim;
+            }
+        }
+
         // If subclaims are allowed and a parent claim was selected, prefer a matching child (handles 2D subdivisions)
         if (!ignoreSubclaims && result != null && result.parent == null && !result.children.isEmpty())
         {
@@ -1188,6 +1196,52 @@ public abstract class DataStore
             //if we find an existing claim which will be overlapped
             if (otherClaim.id != newClaim.id && otherClaim.inDataStore && otherClaim.overlaps(newClaim))
             {
+                // For top-level claims, don't fail if the overlapping claim is one of our own descendants (any depth)
+                // Subdivisions are supposed to be contained within their parent claim hierarchy
+                if (newClaim.parent == null && otherClaim.parent != null) {
+                    Claim cursor = otherClaim.parent;
+                    while (cursor != null) {
+                        if (cursor.id != null && cursor.id.equals(newClaim.id)) {
+                            // Overlap with a descendant; allowed
+                            otherClaim = null; // mark as handled
+                            break;
+                        }
+                        cursor = cursor.parent;
+                    }
+                    if (otherClaim == null) {
+                        continue;
+                    }
+                }
+
+                // Special case: When resizing a top-level claim (dry run via createClaim during resize),
+                // allow zero-area intersection (edge/corner touching) with neighboring claims.
+                // This prevents false-positive conflicts when expanding from a corner shared with a child subdivision
+                // or when only borders touch, while still blocking any real area overlap.
+                if (dryRun && newClaim.parent == null)
+                {
+                    // Compute X/Z overlap extents (inclusive bounds)
+                    int aMinX = newClaim.getLesserBoundaryCorner().getBlockX();
+                    int aMaxX = newClaim.getGreaterBoundaryCorner().getBlockX();
+                    int aMinZ = newClaim.getLesserBoundaryCorner().getBlockZ();
+                    int aMaxZ = newClaim.getGreaterBoundaryCorner().getBlockZ();
+
+                    int bMinX = otherClaim.getLesserBoundaryCorner().getBlockX();
+                    int bMaxX = otherClaim.getGreaterBoundaryCorner().getBlockX();
+                    int bMinZ = otherClaim.getLesserBoundaryCorner().getBlockZ();
+                    int bMaxZ = otherClaim.getGreaterBoundaryCorner().getBlockZ();
+
+                    int overlapX = Math.min(aMaxX, bMaxX) - Math.max(aMinX, bMinX);
+                    int overlapZ = Math.min(aMaxZ, bMaxZ) - Math.max(aMinZ, bMinZ);
+
+                    // If either dimension has zero overlap width, this is an edge or corner touch, not an area overlap.
+                    boolean zeroAreaTouch = overlapX == 0 || overlapZ == 0;
+                    if (zeroAreaTouch)
+                    {
+                        // Treat border/corner touching as non-conflict in resize dry-run of a top-level claim.
+                        continue;
+                    }
+                }
+
                 //result = fail, return conflicting claim
                 result.succeeded = false;
                 result.claim = otherClaim;
@@ -1371,6 +1425,11 @@ public abstract class DataStore
     //see CreateClaim() for details on return value
     synchronized public CreateClaimResult resizeClaim(Claim claim, int newx1, int newx2, int newy1, int newy2, int newz1, int newz2, Player resizingPlayer)
     {
+        // Allow 3D single-layer subdivisions to expand vertically when resizing.
+        // PlayerEventHandler computes newy1/newy2 based on the drag direction, including the
+        // special case where a 3D claim is a single layer (nx1xn). Do not coerce Y to a single
+        // layer here; accept the requested vertical span.
+
         //try to create this new claim, ignoring the original when checking for overlap
         CreateClaimResult result = this.createClaim(claim.getLesserBoundaryCorner().getWorld(), newx1, newx2, newy1, newy2, newz1, newz2, claim.ownerID, claim.parent, claim.id, resizingPlayer, true);
 
@@ -1472,8 +1531,34 @@ public abstract class DataStore
         newClaim.lesserBoundaryCorner = new Location(world, newx1, newy1, newz1);
         newClaim.greaterBoundaryCorner = new Location(world, newx2, newy2, newz2);
 
+        // Check if the new boundaries would intersect with any existing subdivisions
+        if (playerData.claimResizing.children != null && !playerData.claimResizing.children.isEmpty()) {
+            int newMinX = Math.min(newx1, newx2);
+            int newMaxX = Math.max(newx1, newx2);
+            int newMinY = Math.min(newy1, newy2);
+            int newMaxY = Math.max(newy1, newy2);
+            int newMinZ = Math.min(newz1, newz2);
+            int newMaxZ = Math.max(newz1, newz2);
+            
+            for (Claim child : playerData.claimResizing.children) {
+                Location childMin = child.getLesserBoundaryCorner();
+                Location childMax = child.getGreaterBoundaryCorner();
+
+                // New containment rule for main-claim resize with children (X/Z only, Y ignored):
+                // Child must be fully contained or exactly flush with the new parent X/Z bounds.
+                boolean containedX = newMinX <= childMin.getBlockX() && newMaxX >= childMax.getBlockX();
+                boolean containedZ = newMinZ <= childMin.getBlockZ() && newMaxZ >= childMax.getBlockZ();
+
+                if (!(containedX && containedZ)) {
+                    GriefPrevention.sendMessage(player, TextMode.Err,
+                        Messages.ResizeFailSubdivision);
+                    return;
+                }
+            }
+        }
+
         //call event here to check if it has been cancelled
-        ClaimResizeEvent event = new ClaimModifiedEvent(oldClaim, newClaim, player); // Swap to ClaimResizeEvent when ClaimModifiedEvent is removed
+        ClaimResizeEvent event = new ClaimResizeEvent(oldClaim, newClaim, player);
         Bukkit.getPluginManager().callEvent(event);
 
         //return here if event is cancelled

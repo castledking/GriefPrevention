@@ -202,8 +202,8 @@ public class GriefPrevention extends JavaPlugin
     public ArrayList<String> config_eavesdrop_whisperCommands;        //list of whisper commands to eavesdrop on
 
     public boolean config_visualizationAntiCheatCompat;              // whether to engage compatibility mode for anti-cheat plugins
-
-    public boolean config_smartBan;                                    //whether to ban accounts which very likely owned by a banned player
+    public boolean config_visualizationGlow;                        // whether to add glow effect to visualization outlines
+    public boolean config_smartBan;                                    //whether to be smart about banning players (check for new players with the same ip)
 
     public boolean config_endermenMoveBlocks;                        //whether or not endermen may move blocks around
     public boolean config_claims_ravagersBreakBlocks;                //whether or not ravagers may break blocks in claims
@@ -625,6 +625,7 @@ public class GriefPrevention extends JavaPlugin
         whisperCommandsToMonitor = config.getString("GriefPrevention.Spam.WhisperSlashCommands", whisperCommandsToMonitor);
 
         this.config_visualizationAntiCheatCompat = config.getBoolean("GriefPrevention.VisualizationAntiCheatCompatMode", false);
+        this.config_visualizationGlow = config.getBoolean("GriefPrevention.VisualizationGlow", false);
         this.config_smartBan = config.getBoolean("GriefPrevention.SmartBan", true);
         this.config_trollFilterEnabled = config.getBoolean("GriefPrevention.Mute New Players Using Banned Words", true);
         this.config_ipLimit = config.getInt("GriefPrevention.MaxPlayersPerIpAddress", 3);
@@ -790,6 +791,7 @@ public class GriefPrevention extends JavaPlugin
         outConfig.set("GriefPrevention.AdminsGetSignNotifications", this.config_signNotifications);
 
         outConfig.set("GriefPrevention.VisualizationAntiCheatCompatMode", this.config_visualizationAntiCheatCompat);
+        outConfig.set("GriefPrevention.VisualizationGlow", this.config_visualizationGlow);
         outConfig.set("GriefPrevention.SmartBan", this.config_smartBan);
         outConfig.set("GriefPrevention.Mute New Players Using Banned Words", this.config_trollFilterEnabled);
         outConfig.set("GriefPrevention.MaxPlayersPerIpAddress", this.config_ipLimit);

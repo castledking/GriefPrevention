@@ -6,10 +6,13 @@ import com.griefprevention.visualization.BoundaryVisualization;
 import com.griefprevention.visualization.VisualizationProvider;
 import com.griefprevention.visualization.impl.AntiCheatCompatVisualization;
 import com.griefprevention.visualization.impl.FakeBlockVisualization;
+import com.griefprevention.visualization.impl.GlowingVisualization;
 import me.ryanhamshire.GriefPrevention.GriefPrevention;
+import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.event.HandlerList;
 import org.bukkit.event.player.PlayerEvent;
+import org.bukkit.util.BoundingBox;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Collection;
@@ -21,12 +24,27 @@ import java.util.HashSet;
 public class BoundaryVisualizationEvent extends PlayerEvent
 {
 
-    public static final VisualizationProvider DEFAULT_PROVIDER = (world, visualizeFrom, height) ->
-    {
-        if (GriefPrevention.instance.config_visualizationAntiCheatCompat)
-        {
+    public static final VisualizationProvider DEFAULT_PROVIDER = (world, visualizeFrom, height) -> {
+        // If both AntiCheat compatibility and glow are enabled, create a custom visualization that combines both
+        if (GriefPrevention.instance.config_visualizationAntiCheatCompat && GriefPrevention.instance.config_visualizationGlow) {
+            return new GlowingVisualization(world, visualizeFrom, height) {
+                @Override
+                protected boolean isTransparent(@NotNull Block block) {
+                    // Use AntiCheat's transparency check
+                    Collection<BoundingBox> boundingBoxes = block.getCollisionShape().getBoundingBoxes();
+                    return boundingBoxes.isEmpty() || !boundingBoxes.stream().allMatch(box -> box.getVolume() == 1.0);
+                }
+            };
+        }
+        // If only AntiCheat compatibility is enabled
+        if (GriefPrevention.instance.config_visualizationAntiCheatCompat) {
             return new AntiCheatCompatVisualization(world, visualizeFrom, height);
         }
+        // If only glow is enabled
+        if (GriefPrevention.instance.config_visualizationGlow) {
+            return new GlowingVisualization(world, visualizeFrom, height);
+        }
+        // Default to FakeBlockVisualization
         return new FakeBlockVisualization(world, visualizeFrom, height);
     };
 

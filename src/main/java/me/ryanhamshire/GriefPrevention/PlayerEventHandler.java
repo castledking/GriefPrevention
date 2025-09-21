@@ -73,6 +73,7 @@ import org.bukkit.Tag;
  import org.bukkit.event.player.PlayerItemHeldEvent;
  import org.bukkit.event.player.PlayerJoinEvent;
  import org.bukkit.event.player.PlayerKickEvent;
+ import org.bukkit.event.entity.PlayerLeashEntityEvent;
  import org.bukkit.event.player.PlayerLoginEvent;
  import org.bukkit.event.player.PlayerLoginEvent.Result;
  import org.bukkit.event.player.PlayerPortalEvent;
@@ -83,6 +84,7 @@ import org.bukkit.Tag;
  import org.bukkit.event.player.PlayerTeleportEvent;
  import org.bukkit.event.player.PlayerTeleportEvent.TeleportCause;
  import org.bukkit.event.raid.RaidTriggerEvent;
+ import org.bukkit.event.vehicle.VehicleEnterEvent;
  import org.bukkit.inventory.EquipmentSlot;
  import org.bukkit.inventory.InventoryHolder;
  import org.bukkit.inventory.ItemStack;
@@ -128,6 +130,14 @@ import org.bukkit.Tag;
  
      //matcher for banned words
      private WordFinder bannedWordFinder;
+    
+    /**
+     * Gets the banned word finder instance
+     * @return The WordFinder instance for checking and censoring banned words
+     */
+    public WordFinder getBannedWordFinder() {
+        return bannedWordFinder;
+    }
      private MonitoredCommands pvpBlockedCommands;
      private MonitoredCommands accessTrustCommands;
      private MonitoredCommands chatCommands;
@@ -208,7 +218,7 @@ import org.bukkit.Tag;
                  {
                      recipientsToKeep.add(recipient);
                  }
-                 else if (recipient.hasPermission("griefprevention.eavesdrop"))
+                 else if (recipient.hasPermission("griefprevention.eavesdrop.softmute"))
                  {
                      recipient.sendMessage(ChatColor.GRAY + notificationMessage);
                  }
@@ -226,7 +236,7 @@ import org.bukkit.Tag;
              String notificationMessage = "(Muted " + player.getName() + "): " + message;
              for (Player recipient : recipients)
              {
-                 if (recipient.hasPermission("griefprevention.eavesdrop"))
+                 if (recipient.hasPermission("griefprevention.eavesdrop.softmute"))
                  {
                      recipient.sendMessage(ChatColor.GRAY + notificationMessage);
                  }
@@ -463,7 +473,7 @@ import org.bukkit.Tag;
                      Collection<Player> players = (Collection<Player>) instance.getServer().getOnlinePlayers();
                      for (Player onlinePlayer : players)
                      {
-                         if (onlinePlayer.hasPermission("griefprevention.eavesdrop") && !onlinePlayer.equals(targetPlayer) && !onlinePlayer.equals(player))
+                         if (onlinePlayer.hasPermission("griefprevention.eavesdrop.pm") && !onlinePlayer.equals(targetPlayer) && !onlinePlayer.equals(player))
                          {
                              onlinePlayer.sendMessage(ChatColor.GRAY + logMessage);
                          }
@@ -1065,6 +1075,34 @@ import org.bukkit.Tag;
          }
      }
  
+     //when a player leashes an entity...
+     @EventHandler(ignoreCancelled = true, priority = EventPriority.LOW)
+     public void onPlayerLeashEntity(PlayerLeashEntityEvent event)
+     {
+         Player player = event.getPlayer();
+         Entity entity = event.getEntity();
+
+         // Only handle boats
+         if (entity.getType() != EntityType.BOAT && entity.getType() != EntityType.CHEST_BOAT) {
+             return;
+         }
+
+         // If claims aren't enabled in this world, skip
+         if (!instance.claimsEnabledForWorld(entity.getWorld())) {
+             return;
+         }
+
+         // Check if the player has permission to interact with the entity in this claim
+         Claim claim = this.dataStore.getClaimAt(entity.getLocation(), false, null);
+         if (claim != null) {
+             Supplier<String> noBuildReason = ProtectionHelper.checkPermission(player, entity.getLocation(), ClaimPermission.Inventory, event);
+             if (noBuildReason != null) {
+                 GriefPrevention.sendRateLimitedErrorMessage(player, noBuildReason.get());
+                 event.setCancelled(true);
+             }
+         }
+     }
+
      //when a player interacts with an entity...
      @EventHandler(ignoreCancelled = true, priority = EventPriority.LOW)
      public void onPlayerInteractEntity(PlayerInteractEntityEvent event)
@@ -1196,22 +1234,26 @@ import org.bukkit.Tag;
          }
  
          ItemStack itemInHand = instance.getItemInHand(player, event.getHand());
- 
-         //if preventing theft, prevent leashing claimed creatures
-         if (instance.config_claims_preventTheft && entity instanceof Creature && itemInHand.getType() == Material.LEAD)
-         {
-             Claim claim = this.dataStore.getClaimAt(entity.getLocation(), false, playerData.lastClaim);
-             if (claim != null)
-             {
-                 Supplier<String> failureReason = claim.checkPermission(player, ClaimPermission.Inventory, event);
-                 if (failureReason != null)
-                 {
-                     event.setCancelled(true);
-                     GriefPrevention.sendRateLimitedErrorMessage(player, failureReason.get());
-                     return;
-                 }
-             }
-         }
+
+        //if preventing theft, prevent leashing claimed creatures and boats
+        if (instance.config_claims_preventTheft && itemInHand.getType() == Material.LEAD)
+        {
+            // Handle creatures (original logic)
+            if (entity instanceof Creature || entity.getType() == EntityType.BOAT || entity.getType() == EntityType.CHEST_BOAT)
+            {
+                Claim claim = this.dataStore.getClaimAt(entity.getLocation(), false, playerData.lastClaim);
+                if (claim != null)
+                {
+                    Supplier<String> failureReason = claim.checkPermission(player, ClaimPermission.Inventory, event);
+                    if (failureReason != null)
+                    {
+                        event.setCancelled(true);
+                        GriefPrevention.sendRateLimitedErrorMessage(player, failureReason.get());
+                        return;
+                    }
+                }
+            }
+        } 
  
          // Name tags may only be used on entities that the player is allowed to kill.
          if (itemInHand.getType() == Material.NAME_TAG)
@@ -1537,6 +1579,32 @@ import org.bukkit.Tag;
          if (action == Action.LEFT_CLICK_BLOCK && clickedBlock != null && !this.onLeftClickWatchList(clickedBlockType))
          {
              return;
+         }
+         
+         // Check for brush usage on any block
+         if (clickedBlock != null)
+         {
+             // Check if player is holding a brush
+             ItemStack itemInHand = player.getInventory().getItemInMainHand();
+             if (itemInHand.getType() == Material.BRUSH)
+             {
+                 if (playerData == null) playerData = this.dataStore.getPlayerData(player.getUniqueId());
+                 
+                 // Check claim permissions
+                 Claim claim = this.dataStore.getClaimAt(clickedBlock.getLocation(), false, playerData.lastClaim);
+                 if (claim != null)
+                 {
+                     playerData.lastClaim = claim;
+                     
+                     Supplier<String> noBuildReason = claim.checkPermission(player, ClaimPermission.Build, event);
+                     if (noBuildReason != null)
+                     {
+                         event.setCancelled(true);
+                         GriefPrevention.sendRateLimitedErrorMessage(player, noBuildReason.get());
+                         return;
+                     }
+                 }
+             }
          }
  
          //apply rules for containers and crafting blocks
@@ -1958,25 +2026,38 @@ import org.bukkit.Tag;
                  // Y resizing behavior
                  if (playerData.claimResizing.is3D())
                  {
-                     // For 3D subclaims, allow vertical resizing when the initial corner was at minY or maxY.
+                     // For 3D subclaims, allow vertical resizing when the initial corner was at minY or maxY
                      int currentMinY = playerData.claimResizing.getLesserBoundaryCorner().getBlockY();
                      int currentMaxY = playerData.claimResizing.getGreaterBoundaryCorner().getBlockY();
                      int startY = playerData.lastShovelLocation.getBlockY();
                      int endY = clickedBlock.getY();
 
+                     // Special case: If it's a single-layer 3D claim, allow resizing from any corner
+                     boolean isSingleLayer = (currentMinY == currentMaxY);
+                     
                      // Default: preserve Y range
                      newy1 = currentMinY;
                      newy2 = currentMaxY;
 
-                     if (startY == currentMinY)
+                     if (isSingleLayer || startY == currentMinY)
                      {
-                         // Dragging from bottom edge: adjust minY
+                         // For single-layer or when dragging from bottom edge: adjust minY
                          newy1 = Math.min(endY, currentMaxY);
+                         
+                         // If we're making it taller, set maxY to the new Y
+                         if (endY > currentMaxY) {
+                             newy2 = endY;
+                         }
                      }
                      else if (startY == currentMaxY)
                      {
                          // Dragging from top edge: adjust maxY
                          newy2 = Math.max(endY, currentMinY);
+                         
+                         // If we're making it taller from the bottom, set minY to the new Y
+                         if (endY < currentMinY) {
+                             newy1 = endY;
+                         }
                      }
 
                      // Ensure ordering
@@ -2007,15 +2088,35 @@ import org.bukkit.Tag;
                 // Fallback to ignore-height search to preserve legacy behavior when no 3D subclaim matches Y
                 resolvedClaim = this.dataStore.getClaimAt(clickedBlock.getLocation(), true /* ignore height */, playerData.lastClaim);
             }
-            final Claim claim = resolvedClaim;
+            Claim claim = resolvedClaim;
+
+            // If this click is exactly at a shared corner between a child and its parent, favor the parent for resizing.
+            if (claim != null && claim.parent != null)
+            {
+                Claim parent = claim.parent;
+                boolean isCornerOfChild =
+                        (clickedBlock.getX() == claim.getLesserBoundaryCorner().getBlockX() || clickedBlock.getX() == claim.getGreaterBoundaryCorner().getBlockX()) &&
+                        (clickedBlock.getZ() == claim.getLesserBoundaryCorner().getBlockZ() || clickedBlock.getZ() == claim.getGreaterBoundaryCorner().getBlockZ());
+
+                boolean isCornerOfParent =
+                        (clickedBlock.getX() == parent.getLesserBoundaryCorner().getBlockX() || clickedBlock.getX() == parent.getGreaterBoundaryCorner().getBlockX()) &&
+                        (clickedBlock.getZ() == parent.getLesserBoundaryCorner().getBlockZ() || clickedBlock.getZ() == parent.getGreaterBoundaryCorner().getBlockZ());
+
+                if (isCornerOfChild && isCornerOfParent)
+                {
+                    // Promote to parent so user can expand the main claim while keeping the child encapsulated
+                    claim = parent;
+                }
+            }
  
              //if within an existing claim, he's not creating a new one
              if (claim != null)
-             {
-                 //if the player has permission to edit the claim or subdivision
-                 Supplier<String> noEditReason = claim.checkPermission(player, ClaimPermission.Edit, event, () -> instance.dataStore.getMessage(Messages.CreateClaimFailOverlapOtherPlayer, claim.getOwnerName()));
-                 if (noEditReason == null)
-                 {
+            {
+                //if the player has permission to edit the claim or subdivision
+                final String ownerName = claim.getOwnerName();
+                Supplier<String> noEditReason = claim.checkPermission(player, ClaimPermission.Edit, event, () -> instance.dataStore.getMessage(Messages.CreateClaimFailOverlapOtherPlayer, ownerName));
+                if (noEditReason == null)
+                {
                      //if he clicked on a corner, start resizing it
                      if ((clickedBlock.getX() == claim.getLesserBoundaryCorner().getBlockX() || clickedBlock.getX() == claim.getGreaterBoundaryCorner().getBlockX()) && (clickedBlock.getZ() == claim.getLesserBoundaryCorner().getBlockZ() || clickedBlock.getZ() == claim.getGreaterBoundaryCorner().getBlockZ()))
                      {
@@ -2065,9 +2166,18 @@ import org.bukkit.Tag;
                             int minY, maxY;
 
                             if (playerData.shovelMode == ShovelMode.Subdivide) {
-                                // 2D mode: full height from parent bottom to world max height
-                                minY = playerData.claimSubdividing.getLesserBoundaryCorner().getBlockY();
-                                maxY = player.getWorld().getMaxHeight();
+                                // 2D mode: Always span from parent's bottom to world max height so claim is NOT 3D.
+                                // This matches default GP behavior where 2D subclaims ignore height.
+                                int parentMinY = playerData.claimSubdividing.getLesserBoundaryCorner().getBlockY();
+                                int worldMaxY = player.getWorld().getMaxHeight();
+
+                                minY = parentMinY;
+                                maxY = worldMaxY;
+
+                                // For 2D subdivisions, force the created corners to use the full-height span
+                                // so DataStore.createClaim marks is3D=false.
+                                y1 = minY;
+                                y2 = maxY;
                             } else if (playerData.shovelMode == ShovelMode.Subdivide3D) {
                                 // 3D mode: same-Y -> single-layer 3D; different Y -> bounded 3D
                                 if (Math.abs(y2 - y1) == 0) {
@@ -2078,9 +2188,9 @@ import org.bukkit.Tag;
                                     maxY = Math.max(y1, y2);
                                 }
                             } else {
-                                // Fallback (shouldn't happen): default to parent Y bounds
+                                // Fallback: default to parent Y bounds
                                 minY = playerData.claimSubdividing.getLesserBoundaryCorner().getBlockY();
-                                maxY = player.getWorld().getMaxHeight();
+                                maxY = playerData.claimSubdividing.getGreaterBoundaryCorner().getBlockY();
                             }
 
                              //try to create a new claim (will return null if this subdivision overlaps another)
@@ -2419,4 +2529,39 @@ import org.bukkit.Tag;
              }
          }
      }
+ 
+     // Prevents untrusted players from entering boats in claimed areas
+     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+     public void onVehicleEnter(VehicleEnterEvent event) {
+         if (!(event.getEntered() instanceof Player)) {
+             return; // Only handle player entries
+         }
+        
+         Player player = (Player) event.getEntered();
+         Vehicle vehicle = event.getVehicle();
+        
+         // Only handle boats
+         if (vehicle.getType() != EntityType.BOAT && vehicle.getType() != EntityType.CHEST_BOAT) {
+             return;
+         }
+        
+         // If claims aren't enabled in this world, skip
+         if (!instance.claimsEnabledForWorld(vehicle.getWorld())) {
+             return;
+         }
+
+         // Check if the location is in a claim
+         PlayerData playerData = this.dataStore.getPlayerData(player.getUniqueId());
+         Claim claim = this.dataStore.getClaimAt(vehicle.getLocation(), false, playerData.lastClaim);
+        
+         if (claim != null) {
+             playerData.lastClaim = claim;
+             Supplier<String> noAccessReason = claim.checkPermission(player, ClaimPermission.Access, event);
+            
+             if (noAccessReason != null) {
+                 event.setCancelled(true);
+                 GriefPrevention.sendRateLimitedErrorMessage(player, noAccessReason.get());
+             }
+         }
+     } 
  }

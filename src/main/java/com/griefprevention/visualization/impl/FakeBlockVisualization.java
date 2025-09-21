@@ -50,6 +50,10 @@ public class FakeBlockVisualization extends BlockBoundaryVisualization
         {
             case SUBDIVISION_3D -> addExactBlockElement(Material.IRON_BLOCK.createBlockData());
             case SUBDIVISION -> addBlockElement(Material.IRON_BLOCK.createBlockData());
+            case ADMIN_CLAIM -> {
+                BlockData orangeGlass = Material.ORANGE_STAINED_GLASS.createBlockData();
+                yield addBlockElement(orangeGlass);
+            }
             case INITIALIZE_ZONE -> addBlockElement(Material.DIAMOND_BLOCK.createBlockData());
             case CONFLICT_ZONE -> {
                 BlockData fakeData = Material.REDSTONE_ORE.createBlockData();
@@ -76,6 +80,8 @@ public class FakeBlockVisualization extends BlockBoundaryVisualization
         };
     }
 
+    private BoundingBox displayZone; // Store display zone for use in helper methods
+
     @Override
     protected void draw(@NotNull Player player, @NotNull Boundary boundary)
     {
@@ -84,10 +90,300 @@ public class FakeBlockVisualization extends BlockBoundaryVisualization
         {
             drawRespectingYBoundaries(player, boundary);
         }
+        // For 2D subdivisions, use custom logic similar to 3D but at terrain level
+        else if (boundary.type() == VisualizationType.SUBDIVISION && boundary.claim() != null)
+        {
+            draw2DSubdivision(player, boundary);
+        }
+        // For main claims, use custom logic to ensure proper terrain-level placement
+        else if (boundary.type() == VisualizationType.CLAIM && boundary.claim() != null)
+        {
+            drawMainClaim(player, boundary);
+        }
         else
         {
             // Use the default implementation for all other boundary types
             super.draw(player, boundary);
+        }
+    }
+
+    /**
+     * Draw a main claim boundary at terrain height with proper corner placement
+     */
+    private void drawMainClaim(@NotNull Player player, @NotNull Boundary boundary) {
+        BoundingBox area = boundary.bounds();
+
+        // Replicate display zone logic from parent class
+        final int displayZoneRadius = 75;
+        IntVector visualizeFrom = new IntVector(player.getEyeLocation().getBlockX(),
+                                               player.getEyeLocation().getBlockY(),
+                                               player.getEyeLocation().getBlockZ());
+        int baseX = visualizeFrom.x();
+        int baseZ = visualizeFrom.z();
+        BoundingBox displayZoneArea = new BoundingBox(
+                new IntVector(baseX - displayZoneRadius, world.getMinHeight(), baseZ - displayZoneRadius),
+                new IntVector(baseX + displayZoneRadius, world.getMaxHeight(), baseZ + displayZoneRadius));
+
+        // Trim to area - allows for simplified display containment check later.
+        BoundingBox displayZone = displayZoneArea.intersection(area);
+
+        // If area is not inside display zone, there is nothing to display.
+        if (displayZone == null) return;
+
+        Consumer<@NotNull IntVector> addCorner = addCornerElements(boundary);
+        Consumer<@NotNull IntVector> addSide = addSideElements(boundary);
+
+        int minX = area.getMinX();
+        int maxX = area.getMaxX();
+        int minZ = area.getMinZ();
+        int maxZ = area.getMaxZ();
+        final int STEP = 10; // Match the step size from parent class
+
+        // Get terrain height for corners
+        int corner1Y = getSurfaceYAt(minX, minZ, player); // SW corner
+        int corner2Y = getSurfaceYAt(maxX, minZ, player); // SE corner
+        int corner3Y = getSurfaceYAt(minX, maxZ, player); // NW corner
+        int corner4Y = getSurfaceYAt(maxX, maxZ, player); // NE corner
+
+        // Add corners at terrain level
+        addDisplayedForMainClaim(displayZone, new IntVector(minX, corner1Y, minZ), addCorner, boundary.type()); // SW
+        addDisplayedForMainClaim(displayZone, new IntVector(maxX, corner2Y, minZ), addCorner, boundary.type()); // SE
+        addDisplayedForMainClaim(displayZone, new IntVector(minX, corner3Y, maxZ), addCorner, boundary.type()); // NW
+        addDisplayedForMainClaim(displayZone, new IntVector(maxX, corner4Y, maxZ), addCorner, boundary.type()); // NE
+
+        // Add side markers along X axis (north and south sides) - following terrain
+        for (int x = Math.max(minX + STEP, minX + STEP); x < maxX - STEP / 2 && x < maxX - STEP / 2; x += STEP) {
+            if (x > minX + 1 && x < maxX - 1) {
+                int terrainY = getSurfaceYAt(x, minZ, player);
+                addDisplayedForMainClaim(displayZone, new IntVector(x, terrainY, minZ), addSide, boundary.type()); // North side
+                terrainY = getSurfaceYAt(x, maxZ, player);
+                addDisplayedForMainClaim(displayZone, new IntVector(x, terrainY, maxZ), addSide, boundary.type()); // South side
+            }
+        }
+
+        // Additional markers directly adjacent to corners if area is large enough
+        if (maxX - minX > 2) {
+            int terrainY = getSurfaceYAt(minX + 1, minZ, player);
+            addDisplayedForMainClaim(displayZone, new IntVector(minX + 1, terrainY, minZ), addSide, boundary.type());
+            terrainY = getSurfaceYAt(minX + 1, maxZ, player);
+            addDisplayedForMainClaim(displayZone, new IntVector(minX + 1, terrainY, maxZ), addSide, boundary.type());
+            terrainY = getSurfaceYAt(maxX - 1, minZ, player);
+            addDisplayedForMainClaim(displayZone, new IntVector(maxX - 1, terrainY, minZ), addSide, boundary.type());
+            terrainY = getSurfaceYAt(maxX - 1, maxZ, player);
+            addDisplayedForMainClaim(displayZone, new IntVector(maxX - 1, terrainY, maxZ), addSide, boundary.type());
+        }
+
+        // Add side markers along Z axis (east and west sides) - following terrain
+        for (int z = Math.max(minZ + STEP, minZ + STEP); z < maxZ - STEP / 2 && z < maxZ - STEP / 2; z += STEP) {
+            if (z > minZ + 1 && z < maxZ - 1) {
+                int terrainY = getSurfaceYAt(minX, z, player);
+                addDisplayedForMainClaim(displayZone, new IntVector(minX, terrainY, z), addSide, boundary.type()); // West side
+                terrainY = getSurfaceYAt(maxX, z, player);
+                addDisplayedForMainClaim(displayZone, new IntVector(maxX, terrainY, z), addSide, boundary.type()); // East side
+            }
+        }
+
+        // Additional markers directly adjacent to corners if area is large enough
+        if (maxZ - minZ > 2) {
+            int terrainY = getSurfaceYAt(minX, minZ + 1, player);
+            addDisplayedForMainClaim(displayZone, new IntVector(minX, terrainY, minZ + 1), addSide, boundary.type());
+            terrainY = getSurfaceYAt(maxX, minZ + 1, player);
+            addDisplayedForMainClaim(displayZone, new IntVector(maxX, terrainY, minZ + 1), addSide, boundary.type());
+            terrainY = getSurfaceYAt(minX, maxZ - 1, player);
+            addDisplayedForMainClaim(displayZone, new IntVector(minX, terrainY, maxZ - 1), addSide, boundary.type());
+            terrainY = getSurfaceYAt(maxX, maxZ - 1, player);
+            addDisplayedForMainClaim(displayZone, new IntVector(maxX, terrainY, maxZ - 1), addSide, boundary.type());
+        }
+    }
+
+    /**
+     * Add a display element if accessible (override to use terrain-level placement for main claims)
+     */
+    protected void addDisplayedForMainClaim(@NotNull BoundingBox displayZone, @NotNull IntVector coordinate, @NotNull Consumer<@NotNull IntVector> addElement, @NotNull VisualizationType boundaryType)
+    {
+        if (isAccessible(displayZone, coordinate)) {
+            // Use the original addElement consumer instead of overriding with side block data
+            addElement.accept(coordinate);
+        }
+    }
+
+    /**
+     * Draw a 2D subdivision boundary at terrain height with proper corner placement
+     */
+    private void draw2DSubdivision(@NotNull Player player, @NotNull Boundary boundary) {
+        BoundingBox area = boundary.bounds();
+        Claim claim = boundary.claim();
+
+        if (claim == null) {
+            // Fallback to default behavior if claim is null
+            super.draw(player, boundary);
+            return;
+        }
+
+        // Replicate display zone logic from 3D case
+        final int displayZoneRadius = 75;
+        IntVector visualizeFrom = new IntVector(player.getEyeLocation().getBlockX(),
+                                               player.getEyeLocation().getBlockY(),
+                                               player.getEyeLocation().getBlockZ());
+        int baseX = visualizeFrom.x();
+        int baseZ = visualizeFrom.z();
+        BoundingBox displayZoneArea = new BoundingBox(
+                new IntVector(baseX - displayZoneRadius, world.getMinHeight(), baseZ - displayZoneRadius),
+                new IntVector(baseX + displayZoneRadius, world.getMaxHeight(), baseZ + displayZoneRadius));
+
+        // Trim to area - allows for simplified display containment check later.
+        this.displayZone = displayZoneArea.intersection(area);
+
+        // If area is not inside display zone, there is nothing to display.
+        if (this.displayZone == null) return;
+
+        // Get coordinates for 2D subdivision
+        int minX = area.getMinX();
+        int maxX = area.getMaxX();
+        int minZ = area.getMinZ();
+        int maxZ = area.getMaxZ();
+
+        // Get surface Y for each corner to properly follow terrain
+        int nwY = getSurfaceYAt(minX, minZ, player);  // NW corner
+        int swY = getSurfaceYAt(minX, maxZ, player);  // SW corner
+        int neY = getSurfaceYAt(maxX, minZ, player);  // NE corner
+        int seY = getSurfaceYAt(maxX, maxZ, player);  // SE corner
+
+        // Render exactly 4 iron corners and 8 white wool side blocks (one off each side of each corner toward the interior)
+        BlockData iron = Material.IRON_BLOCK.createBlockData();
+        BlockData wool = Material.WHITE_WOOL.createBlockData();
+
+        // Place iron corner blocks
+        addDisplayLocation(new IntVector(minX, nwY, minZ), iron, boundary.type()); // NW
+        addDisplayLocation(new IntVector(minX, swY, maxZ), iron, boundary.type()); // SW
+        addDisplayLocation(new IntVector(maxX, neY, minZ), iron, boundary.type()); // NE
+        addDisplayLocation(new IntVector(maxX, seY, maxZ), iron, boundary.type()); // SE
+
+        // From each corner, place one white wool block along the interior X side and one along the interior Z side
+        // NW corner interior directions: +X, +Z
+        if (minX + 1 <= maxX) addDisplayLocation(new IntVector(minX + 1, nwY, minZ), wool, boundary.type());
+        if (minZ + 1 <= maxZ) addDisplayLocation(new IntVector(minX, nwY, minZ + 1), wool, boundary.type());
+
+        // SW corner interior directions: +X, -Z
+        if (minX + 1 <= maxX) addDisplayLocation(new IntVector(minX + 1, swY, maxZ), wool, boundary.type());
+        if (maxZ - 1 >= minZ) addDisplayLocation(new IntVector(minX, swY, maxZ - 1), wool, boundary.type());
+
+        // NE corner interior directions: -X, +Z
+        if (maxX - 1 >= minX) addDisplayLocation(new IntVector(maxX - 1, neY, minZ), wool, boundary.type());
+        if (minZ + 1 <= maxZ) addDisplayLocation(new IntVector(maxX, neY, minZ + 1), wool, boundary.type());
+
+        // SE corner interior directions: -X, -Z
+        if (maxX - 1 >= minX) addDisplayLocation(new IntVector(maxX - 1, seY, maxZ), wool, boundary.type());
+        if (maxZ - 1 >= minZ) addDisplayLocation(new IntVector(maxX, seY, maxZ - 1), wool, boundary.type());
+    }
+
+    /**
+     * Gets the surface Y coordinate at a specific x,z position
+     * For main claims, allows 1-block occurrences to pass through to the next block below
+     */
+    private int getSurfaceYAt(int x, int z, Player player) {
+        if (!world.isChunkLoaded(x >> 4, z >> 4)) {
+            return player != null ? player.getLocation().getBlockY() - 1 : world.getMinHeight() + 63;
+        }
+        
+        // Start from the highest block at this x,z position
+        int y = world.getMaxHeight() - 1;
+        boolean foundSolid = false;
+        
+        // Find the highest non-air, non-transparent block
+        while (y >= world.getMinHeight()) {
+            Block block = world.getBlockAt(x, y, z);
+            
+            // If we find a solid block after finding air, we've found the surface
+            if (foundSolid && !isTransparent(block)) {
+                // For main claims, we want to allow 1-block occurrences to pass through
+                // So we return the block below the surface
+                return y;
+            }
+            
+            // If we find air, mark that we've found the surface
+            if (block.getType() == Material.AIR) {
+                foundSolid = true;
+            }
+            
+            y--;
+        }
+        
+        // If we get here, return the minimum height
+        return world.getMinHeight();
+    }
+
+    /**
+     * Add a display element if accessible (override to use terrain-level placement for main claims)
+     */
+    protected void addDisplayedForMainClaim(@NotNull BoundingBox displayZone, @NotNull IntVector coordinate, @NotNull Consumer<@NotNull IntVector> addElement)
+    {
+        if (isAccessible(displayZone, coordinate)) {
+            addElement.accept(coordinate);
+        }
+    }
+
+    /**
+     * Gets the corner block data for the given visualization type
+     */
+    private BlockData getCornerBlockData(VisualizationType type) {
+        return switch (type) {
+            case CLAIM -> Material.GLOWSTONE.createBlockData(); // Main claim corners should be glowstone
+            case SUBDIVISION_3D, SUBDIVISION -> Material.IRON_BLOCK.createBlockData();
+            case INITIALIZE_ZONE -> Material.DIAMOND_BLOCK.createBlockData();
+            case CONFLICT_ZONE -> Material.NETHERRACK.createBlockData();
+            case ADMIN_CLAIM -> Material.GLOWSTONE.createBlockData();
+            default -> Material.GLOWSTONE.createBlockData();
+        };
+    }
+
+    /**
+     * Gets the side block data for the given visualization type
+     */
+    private BlockData getSideBlockData(VisualizationType type) {
+        return switch (type) {
+            case SUBDIVISION_3D, SUBDIVISION -> Material.WHITE_WOOL.createBlockData();
+            case CLAIM -> Material.GOLD_BLOCK.createBlockData();
+            case CONFLICT_ZONE -> Material.NETHERRACK.createBlockData();
+            case ADMIN_CLAIM -> Material.PUMPKIN.createBlockData();
+            default -> getCornerBlockData(type);
+        };
+    }
+
+    /**
+     * Adds a corner block with extensions in the specified directions
+     */
+    private void addCornerWithExtensions(int x, int y, int z, int dx, int dz, int dy, VisualizationType type) {
+        // Add the corner block
+        BlockData cornerBlock = getCornerBlockData(type);
+        addDisplayLocation(new IntVector(x, y, z), cornerBlock, type);
+
+        // For subdivisions (both 2D and 3D), add horizontal extensions from corners
+        if (type == VisualizationType.SUBDIVISION || type == VisualizationType.SUBDIVISION_3D) {
+            // Add horizontal extensions in the correct direction (outward from claim)
+            // Invert the direction to extend outward from the claim boundary
+            if (dx != 0) {
+                addDisplayLocation(new IntVector(x - dx, y, z), getCornerBlockData(type), type);
+            }
+            if (dz != 0) {
+                addDisplayLocation(new IntVector(x, y, z - dz), getCornerBlockData(type), type);
+            }
+        }
+    }
+
+    /**
+     * Add a display element if accessible.
+     */
+    private void addDisplayLocation(@NotNull IntVector coordinate, @NotNull BlockData blockData, @NotNull VisualizationType type) {
+        // Check if coordinate is within display zone
+        if (this.displayZone != null &&
+            coordinate.x() >= this.displayZone.getMinX() && coordinate.x() <= this.displayZone.getMaxX() &&
+            coordinate.y() >= this.displayZone.getMinY() && coordinate.y() <= this.displayZone.getMaxY() &&
+            coordinate.z() >= this.displayZone.getMinZ() && coordinate.z() <= this.displayZone.getMaxZ()) {
+            // Use the explicit block data provided by the caller (e.g., iron for corners),
+            // so corners render correctly and sides use their own side material via addSideElements.
+            Consumer<@NotNull IntVector> addElement = addBlockElement(blockData);
+            addElement.accept(coordinate);
         }
     }
 

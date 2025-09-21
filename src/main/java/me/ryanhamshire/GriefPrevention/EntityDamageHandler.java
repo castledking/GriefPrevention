@@ -20,10 +20,12 @@ import org.bukkit.entity.Llama;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Monster;
 import org.bukkit.entity.Mule;
+import org.bukkit.entity.Phantom;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.entity.Rabbit;
 import org.bukkit.entity.Raider;
+import org.bukkit.entity.AreaEffectCloud;
 import org.bukkit.entity.Slime;
 import org.bukkit.entity.Tameable;
 import org.bukkit.entity.ThrownPotion;
@@ -36,6 +38,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityCombustByEntityEvent;
+import org.bukkit.event.entity.AreaEffectCloudApplyEvent;
 import org.bukkit.event.entity.EntityCombustEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
@@ -46,6 +49,7 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.potion.PotionEffectTypeCategory;
+import org.bukkit.projectiles.BlockProjectileSource;
 import org.bukkit.projectiles.ProjectileSource;
 import org.bukkit.util.Vector;
 import org.jetbrains.annotations.NotNull;
@@ -596,9 +600,26 @@ public class EntityDamageHandler implements Listener
         // If the area is not claimed, do not handle.
         if (claim == null) return false;
 
-        // If attacker isn't a player, cancel.
+        // If attacker isn't a player, only allow armor stands to be broken by projectiles (like from dispensers)
+        // when the projectile source is within the same claim
         if (attacker == null)
         {
+            // Allow projectiles (like arrows from dispensers) to break armor stands
+            if (entityType == EntityType.ARMOR_STAND && event.damager() instanceof Projectile projectile)
+            {
+                // Get the projectile source (dispenser, etc.)
+                ProjectileSource source = projectile.getShooter();
+                if (source instanceof BlockProjectileSource blockSource)
+                {
+                    // Check if the dispenser is in the same claim as the armor stand
+                    Claim sourceClaim = this.dataStore.getClaimAt(blockSource.getBlock().getLocation(), false, null);
+                    if (sourceClaim != null && sourceClaim.getID().equals(claim.getID()))
+                    {
+                        return false; // Allow the damage to proceed
+                    }
+                }
+            }
+            
             event.setCancelled(true);
             return true;
         }
@@ -912,6 +933,66 @@ public class EntityDamageHandler implements Listener
         playerData.lastClaim = claim;
     }
 
+    //when an area effect cloud applies effects to entities...
+    @EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
+    public void onAreaEffectCloudApply(@NotNull AreaEffectCloudApplyEvent event) {
+        AreaEffectCloud cloud = event.getEntity();
+        ProjectileSource source = cloud.getSource();
+        
+        // Only handle player-thrown potions
+        if (!(source instanceof Player thrower)) return;
+        
+        // Get the potion effects from the cloud
+        Collection<PotionEffect> effects = cloud.getCustomEffects();
+        boolean isHarmful = effects.stream().anyMatch(effect -> {
+            PotionEffectType type = effect.getType();
+            return type.equals(PotionEffectType.POISON) || 
+                type.equals(PotionEffectType.SLOWNESS) || 
+                type.equals(PotionEffectType.WEAKNESS);
+        });
+        
+        // Check each affected entity
+        event.getAffectedEntities().removeIf(affected -> {
+            // Always affect the thrower
+            if (affected.equals(thrower)) return false;
+            
+            // For players, use PvP rules
+            if (affected instanceof Player affectedPlayer) {
+                PlayerData playerData = this.dataStore.getPlayerData(thrower.getUniqueId());
+                Claim claim = this.dataStore.getClaimAt(affected.getLocation(), false, playerData.lastClaim);
+                if (claim != null) {
+                    playerData.lastClaim = claim;
+                    // Check PvP permissions
+                    return handlePvpInClaim(thrower, affectedPlayer, affected.getLocation(), playerData, () -> {});
+                }
+                return false;
+            }
+            // For entities (mobs)
+            else if (affected instanceof LivingEntity) {
+                Location loc = affected.getLocation();
+                Claim claim = this.dataStore.getClaimAt(loc, false, null);
+                
+                // If not in a claim, allow all effects
+                if (claim == null) return false;
+                
+                // If thrower is the owner, allow all effects
+                if (claim.allowAccess(thrower) == null) {
+                    return false;
+                }
+                
+                // For non-owners, only allow harmful effects on hostile mobs
+                if (isHarmful) {
+                    return !(affected instanceof Monster || affected instanceof Slime || affected instanceof Phantom);
+                }
+                
+                // Allow non-harmful effects on all mobs
+                return false;
+            }
+            
+            return false;
+        });
+    }
+    
     //when a splash potion affects one or more entities...
     @EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
     public void onPotionSplash(@NotNull PotionSplashEvent event)

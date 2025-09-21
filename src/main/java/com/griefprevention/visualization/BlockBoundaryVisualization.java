@@ -168,4 +168,21 @@ public abstract class BlockBoundaryVisualization extends BoundaryVisualization
         this.elements.forEach(element -> element.erase(player, world));
     }
 
+    /**
+     * Remove a specific element at the given coordinate and erase it for the player, if present.
+     *
+     * @param player the viewer
+     * @param coordinate the element coordinate to remove
+     * @return true if an element was removed
+     */
+    public boolean removeElementAt(@NotNull Player player, @NotNull IntVector coordinate) {
+        return this.elements.removeIf(element -> {
+            if (element.getCoordinate().equals(coordinate)) {
+                element.erase(player, world);
+                return true;
+            }
+            return false;
+        });
+    }
+
 }

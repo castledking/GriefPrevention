@@ -40,4 +40,38 @@ class WordFinder
         Matcher matcher = this.pattern.matcher(input);
         return matcher.find();
     }
+    
+    /**
+     * Censors all banned words in the input string by replacing each character with an asterisk (*)
+     * @param input The input string to censor
+     * @return The censored string with banned words replaced by asterisks
+     */
+    String censor(String input)
+    {
+        if (this.pattern == null || input == null || input.isEmpty()) return input;
+        
+        StringBuffer result = new StringBuffer();
+        Matcher matcher = this.pattern.matcher(input);
+        
+        while (matcher.find()) {
+            // Get the full match
+            String match = matcher.group();
+            if (match == null || match.trim().isEmpty()) continue;
+            
+            // Extract just the word part (without leading/trailing non-word chars)
+            String word = match.replaceAll("^[^\\w]+|[^\\w]+$", "");
+            if (word.isEmpty()) continue;
+            
+            // Create replacement with asterisks for the word, keeping the boundaries
+            String replacement = match.replaceAll(
+                "\\Q" + word + "\\E", 
+                "*".repeat(word.length())
+            );
+            
+            matcher.appendReplacement(result, replacement);
+        }
+        matcher.appendTail(result);
+        
+        return result.toString();
+    }
 }

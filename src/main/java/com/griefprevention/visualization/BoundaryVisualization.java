@@ -134,6 +134,19 @@ public abstract class BoundaryVisualization
     protected abstract void erase(@NotNull Player player, @NotNull Boundary boundary);
 
     /**
+     * Optional hook: React to a block broken by the viewing player. Implementations can
+     * remove just the element(s) at that location for a smoother UX where visuals
+     * disappear as the player breaks the highlighted blocks.
+     * Default is no-op.
+     *
+     * @param player the player breaking the block
+     * @param block the broken block
+     */
+    public void handleBlockBreak(@NotNull Player player, @NotNull org.bukkit.block.Block block) {
+        // no-op by default; subclasses may override
+    }
+
+    /**
      * Helper method for quickly visualizing an area.
      *
      * @param player the {@link Player} visualizing the area
