@@ -36,13 +36,12 @@ public class GlowingVisualization extends FakeBlockVisualization {
     // Optional per-position glow color overrides (e.g., ADMIN_CLAIM glowstone corners -> orange)
     private final Map<IntVector, org.bukkit.Color> glowColorOverrides = new HashMap<>();
     private final GriefPrevention plugin;
-    private final boolean waterTransparent;
+    private static final float OUTLINE_SCALE = 1.005f;
+    private static final float OUTLINE_OFFSET = -(OUTLINE_SCALE - 1.0f) / 2.0f;
     
     public GlowingVisualization(@NotNull World world, @NotNull com.griefprevention.util.IntVector visualizeFrom, int height) {
         super(world, visualizeFrom, height);
         this.plugin = GriefPrevention.instance;
-        // Water is considered transparent based on whether the visualization is initiated in water
-        this.waterTransparent = visualizeFrom.toBlock(world).getType() == Material.WATER;
     }
 
     @Override
@@ -290,11 +289,11 @@ public class GlowingVisualization extends FakeBlockVisualization {
             int minZ = area.getMinZ();
             int maxZ = area.getMaxZ();
 
-            // Corner heights
-            int nwY = getTerrainYAt(minX, minZ, player);  // NW
-            int swY = getTerrainYAt(minX, maxZ, player);  // SW
-            int neY = getTerrainYAt(maxX, minZ, player);  // NE
-            int seY = getTerrainYAt(maxX, maxZ, player);  // SE
+            // Corner heights - use surface Y with grass block handling
+            int nwY = getSurfaceYAt(minX, minZ, player);  // NW
+            int swY = getSurfaceYAt(minX, maxZ, player);  // SW
+            int neY = getSurfaceYAt(maxX, minZ, player);  // NE
+            int seY = getSurfaceYAt(maxX, maxZ, player);  // SE
 
             // Iron corners (no horizontal lines)
             addCornerWithExtensions(minX, nwY, minZ, 0, 0, 0, boundary.type());
@@ -307,41 +306,41 @@ public class GlowingVisualization extends FakeBlockVisualization {
 
             // NW corner stubs (+X, +Z)
             if (minX + 1 <= maxX) {
-                int y = getTerrainYAt(minX + 1, minZ, null);
+                int y = getSurfaceYAt(minX + 1, minZ, null);
                 addDisplayLocation(new IntVector(minX + 1, y, minZ), wool);
             }
             if (minZ + 1 <= maxZ) {
-                int y = getTerrainYAt(minX, minZ + 1, null);
+                int y = getSurfaceYAt(minX, minZ + 1, null);
                 addDisplayLocation(new IntVector(minX, y, minZ + 1), wool);
             }
 
             // SW corner stubs (+X, -Z)
             if (minX + 1 <= maxX) {
-                int y = getTerrainYAt(minX + 1, maxZ, null);
+                int y = getSurfaceYAt(minX + 1, maxZ, null);
                 addDisplayLocation(new IntVector(minX + 1, y, maxZ), wool);
             }
             if (maxZ - 1 >= minZ) {
-                int y = getTerrainYAt(minX, maxZ - 1, null);
+                int y = getSurfaceYAt(minX, maxZ - 1, null);
                 addDisplayLocation(new IntVector(minX, y, maxZ - 1), wool);
             }
 
             // NE corner stubs (-X, +Z)
             if (maxX - 1 >= minX) {
-                int y = getTerrainYAt(maxX - 1, minZ, null);
+                int y = getSurfaceYAt(maxX - 1, minZ, null);
                 addDisplayLocation(new IntVector(maxX - 1, y, minZ), wool);
             }
             if (minZ + 1 <= maxZ) {
-                int y = getTerrainYAt(maxX, minZ + 1, null);
+                int y = getSurfaceYAt(maxX, minZ + 1, null);
                 addDisplayLocation(new IntVector(maxX, y, minZ + 1), wool);
             }
 
             // SE corner stubs (-X, -Z)
             if (maxX - 1 >= minX) {
-                int y = getTerrainYAt(maxX - 1, maxZ, null);
+                int y = getSurfaceYAt(maxX - 1, maxZ, null);
                 addDisplayLocation(new IntVector(maxX - 1, y, maxZ), wool);
             }
             if (maxZ - 1 >= minZ) {
-                int y = getTerrainYAt(maxX, maxZ - 1, null);
+                int y = getSurfaceYAt(maxX, maxZ - 1, null);
                 addDisplayLocation(new IntVector(maxX, y, maxZ - 1), wool);
             }
         } else {
@@ -352,10 +351,10 @@ public class GlowingVisualization extends FakeBlockVisualization {
             int maxZ = area.getMaxZ();
             
             // Get terrain height for each corner
-            int y1 = getTerrainYAt(minX, minZ, player);
-            int y2 = getTerrainYAt(minX, maxZ, player);
-            int y3 = getTerrainYAt(maxX, minZ, player);
-            int y4 = getTerrainYAt(maxX, maxZ, player);
+            int y1 = getSurfaceYAt(minX, minZ, player);
+            int y2 = getSurfaceYAt(minX, maxZ, player);
+            int y3 = getSurfaceYAt(maxX, minZ, player);
+            int y4 = getSurfaceYAt(maxX, maxZ, player);
             
             // Add corner blocks at their respective heights with correct extension directions
             // Directions: 1 = positive direction (east/south), -1 = negative direction (west/north), 0 = no extension
@@ -431,17 +430,65 @@ public class GlowingVisualization extends FakeBlockVisualization {
     }
     
     /**
-     * Gets the terrain Y coordinate at a specific x,z position with improved surface detection
+     * Gets the surface Y coordinate at a specific x,z position with grass block handling
+     * This ensures visualizations snap to grass_block instead of grass, matching FakeBlockVisualization
      */
-    private int getTerrainYAt(int x, int z, Player player) {
-        if (world.isChunkLoaded(x >> 4, z >> 4)) {
-            // Use the same logic as the original GP visualization to handle transparent blocks properly
-            IntVector vector = new IntVector(x, world.getHighestBlockYAt(x, z, HeightMap.WORLD_SURFACE), z);
-            Block block = getVisibleLocation(vector);
-            return block.getY();
+    private int getSurfaceYAt(int x, int z, Player player) {
+        if (!world.isChunkLoaded(x >> 4, z >> 4)) {
+            return player != null ? player.getLocation().getBlockY() - 1 : world.getMinHeight() + 63;
         }
-        // If chunk not loaded, return player's Y level or a safe default
-        return player != null ? player.getLocation().getBlockY() - 1 : world.getMinHeight() + 63;
+
+        // Start from the highest block at this x,z position
+        int y = world.getMaxHeight() - 1;
+
+        // Find the highest non-air block (including water as valid surface)
+        while (y >= world.getMinHeight()) {
+            Block block = world.getBlockAt(x, y, z);
+
+            // If we find a non-air block, we've found the surface
+            if (block.getType() != Material.AIR) {
+                // For transparent blocks (except water), find the actual surface below
+                if (isTransparent(block) && block.getType() != Material.WATER) {
+                    return findSurfaceBelowTransparentBlocks(x, z, y);
+                }
+                return y; // Return the Y of the highest non-air block (e.g., water or solid)
+            }
+
+            y--;
+        }
+
+        // If we get here, return the minimum height
+        return world.getMinHeight();
+    }
+
+    /**
+     * Finds the actual surface Y coordinate below a stack of transparent blocks
+     * @param x The x coordinate
+     * @param z The z coordinate
+     * @param startY The Y coordinate where transparent blocks start
+     * @return The Y coordinate of the actual surface below the transparent blocks
+     */
+    private int findSurfaceBelowTransparentBlocks(int x, int z, int startY) {
+        int y = startY;
+
+        // Count how many transparent blocks are stacked
+        int transparentBlockCount = 0;
+        while (y >= world.getMinHeight() && isTransparent(world.getBlockAt(x, y, z)) && world.getBlockAt(x, y, z).getType() != Material.WATER) {
+            transparentBlockCount++;
+            y--;
+        }
+
+        // The surface is the first non-transparent block we find
+        Block surfaceBlock = world.getBlockAt(x, y, z);
+
+        // If we found a valid surface block, return its Y coordinate
+        if (surfaceBlock.getType() != Material.AIR) {
+            return y;
+        }
+
+        // If no valid surface found, return the original Y minus the transparent block count
+        // This handles cases where transparent blocks are floating above air
+        return startY - transparentBlockCount;
     }
 
     /**
@@ -451,16 +498,49 @@ public class GlowingVisualization extends FakeBlockVisualization {
     private Block getVisibleLocation(@NotNull IntVector vector)
     {
         Block block = vector.toBlock(world);
+
+        // Special handling for water surfaces
+        if (block.getType() == Material.WATER) {
+            return block; // Stay at water surface
+        }
+
+        // Check if the block is glass - if so, treat it as solid and stay on it
+        Material blockMaterial = block.getType();
+        if (blockMaterial == Material.GLASS ||
+            blockMaterial == Material.GLASS_PANE ||
+            blockMaterial == Material.TINTED_GLASS ||
+            blockMaterial.name().contains("GLASS") ||
+            blockMaterial.name().endsWith("_GLASS") ||
+            blockMaterial.name().endsWith("_GLASS_PANE")) {
+            return block; // Stay at glass surface
+        }
+
         BlockFace direction = (isTransparent(block)) ? BlockFace.DOWN : BlockFace.UP;
 
         while (block.getY() >= world.getMinHeight() &&
                 block.getY() < world.getMaxHeight() - 1 &&
-                (!isTransparent(block.getRelative(BlockFace.UP)) || isTransparent(block)))
+                (!isTransparent(block.getRelative(BlockFace.UP)) || isTransparent(block)) &&
+                block.getType() != Material.WATER &&
+                !isGlassBlock(block.getType()))
         {
             block = block.getRelative(direction);
         }
 
         return block;
+    }
+
+    /**
+     * Checks if a material is a glass block that should be treated as a solid surface
+     * @param material The material to check
+     * @return true if the material is a glass block
+     */
+    private boolean isGlassBlock(Material material) {
+        return material == Material.GLASS ||
+               material == Material.GLASS_PANE ||
+               material == Material.TINTED_GLASS ||
+               material.name().contains("GLASS") ||
+               material.name().endsWith("_GLASS") ||
+               material.name().endsWith("_GLASS_PANE");
     }
 
     /**
@@ -470,12 +550,25 @@ public class GlowingVisualization extends FakeBlockVisualization {
     protected boolean isTransparent(Block block) {
         Material blockMaterial = block.getType();
 
+        // Check if it's glass first - glass should be treated as solid for visualization purposes
+        if (blockMaterial == Material.GLASS ||
+            blockMaterial == Material.GLASS_PANE ||
+            blockMaterial == Material.TINTED_GLASS ||
+            blockMaterial.name().contains("GLASS") ||
+            blockMaterial.name().endsWith("_GLASS") ||
+            blockMaterial.name().endsWith("_GLASS_PANE")) {
+            return false; // Glass is not transparent for visualization purposes
+        }
+
         // Custom per-material definitions matching FakeBlockVisualization
         switch (blockMaterial) {
             case WATER:
-                return waterTransparent; // Use dynamic water transparency based on context
+                return true; // Treat water as transparent so visualizations float on water surface
             case SNOW:
                 return false; // Snow is not transparent
+            default:
+                // Fall through to the general logic below
+                break;
         }
 
         if (blockMaterial.isAir()
@@ -487,7 +580,7 @@ public class GlowingVisualization extends FakeBlockVisualization {
             return true;
         }
 
-        return block.getType().isTransparent();
+        return block.getType().isOccluding();
     }
     
     private BlockData getCornerBlockData(VisualizationType type) {
@@ -596,26 +689,26 @@ public class GlowingVisualization extends FakeBlockVisualization {
             // Main loop - start after first step, end before last step/2
             for (int x = Math.max(minX + STEP, minX + STEP); x < maxX - STEP / 2 && x < maxX - STEP / 2; x += STEP) {
                 if (x > minX + 1 && x < maxX - 1) {
-                    int terrainY = getTerrainYAt(x, minZ, null); // Main claim side markers snap to grass_block level
+                    int terrainY = getSurfaceYAt(x, minZ, null); // Main claim side markers snap to grass_block level
                     addDisplayLocation(new IntVector(x, terrainY, minZ), sideBlock);  // Bottom north
                     addDisplayLocation(new IntVector(x, terrainY, maxZ), sideBlock);  // Bottom south
-                    terrainY = getTerrainYAt(x, minZ, null); // Recalculate for top
+                    terrainY = getSurfaceYAt(x, minZ, null); // Recalculate for top
                     addDisplayLocation(new IntVector(x, terrainY, minZ), sideBlock);  // Top north
                     addDisplayLocation(new IntVector(x, terrainY, maxZ), sideBlock);  // Top south
                 }
             }
             // Additional markers directly adjacent to corners if area is large enough
             if (maxX - minX > 2) {
-                int terrainY = getTerrainYAt(minX + 1, minZ, null);
+                int terrainY = getSurfaceYAt(minX + 1, minZ, null);
                 addDisplayLocation(new IntVector(minX + 1, terrainY, minZ), sideBlock);  // Bottom north corner-adjacent
                 addDisplayLocation(new IntVector(minX + 1, terrainY, maxZ), sideBlock);  // Bottom south corner-adjacent
-                terrainY = getTerrainYAt(maxX - 1, minZ, null);
+                terrainY = getSurfaceYAt(maxX - 1, minZ, null);
                 addDisplayLocation(new IntVector(maxX - 1, terrainY, minZ), sideBlock);  // Bottom north corner-adjacent
                 addDisplayLocation(new IntVector(maxX - 1, terrainY, maxZ), sideBlock);  // Bottom south corner-adjacent
-                terrainY = getTerrainYAt(minX + 1, minZ, null); // Recalculate for top
+                terrainY = getSurfaceYAt(minX + 1, minZ, null); // Recalculate for top
                 addDisplayLocation(new IntVector(minX + 1, terrainY, minZ), sideBlock);  // Top north corner-adjacent
                 addDisplayLocation(new IntVector(minX + 1, terrainY, maxZ), sideBlock);  // Top south corner-adjacent
-                terrainY = getTerrainYAt(maxX - 1, minZ, null);
+                terrainY = getSurfaceYAt(maxX - 1, minZ, null);
                 addDisplayLocation(new IntVector(maxX - 1, terrainY, minZ), sideBlock);  // Top north corner-adjacent
                 addDisplayLocation(new IntVector(maxX - 1, terrainY, maxZ), sideBlock);  // Top south corner-adjacent
             }
@@ -624,26 +717,26 @@ public class GlowingVisualization extends FakeBlockVisualization {
             // Main loop - start after first step, end before last step/2
             for (int z = Math.max(minZ + STEP, minZ + STEP); z < maxZ - STEP / 2 && z < maxZ - STEP / 2; z += STEP) {
                 if (z > minZ + 1 && z < maxZ - 1) {
-                    int terrainY = getTerrainYAt(minX, z, null);
+                    int terrainY = getSurfaceYAt(minX, z, null);
                     addDisplayLocation(new IntVector(minX, terrainY, z), sideBlock);  // Bottom west
                     addDisplayLocation(new IntVector(maxX, terrainY, z), sideBlock);  // Bottom east
-                    terrainY = getTerrainYAt(minX, z, null); // Recalculate for top
+                    terrainY = getSurfaceYAt(minX, z, null); // Recalculate for top
                     addDisplayLocation(new IntVector(minX, terrainY, z), sideBlock);  // Top west
                     addDisplayLocation(new IntVector(maxX, terrainY, z), sideBlock);  // Top east
                 }
             }
             // Additional markers directly adjacent to corners if area is large enough
             if (maxZ - minZ > 2) {
-                int terrainY = getTerrainYAt(minX, minZ + 1, null);
+                int terrainY = getSurfaceYAt(minX, minZ + 1, null);
                 addDisplayLocation(new IntVector(minX, terrainY, minZ + 1), sideBlock);  // Bottom west corner-adjacent
                 addDisplayLocation(new IntVector(maxX, terrainY, minZ + 1), sideBlock);  // Bottom east corner-adjacent
-                terrainY = getTerrainYAt(minX, maxZ - 1, null);
+                terrainY = getSurfaceYAt(minX, maxZ - 1, null);
                 addDisplayLocation(new IntVector(minX, terrainY, maxZ - 1), sideBlock);  // Bottom west corner-adjacent
                 addDisplayLocation(new IntVector(maxX, terrainY, maxZ - 1), sideBlock);  // Bottom east corner-adjacent
-                terrainY = getTerrainYAt(minX, minZ + 1, null); // Recalculate for top
+                terrainY = getSurfaceYAt(minX, minZ + 1, null); // Recalculate for top
                 addDisplayLocation(new IntVector(minX, terrainY, minZ + 1), sideBlock);  // Top west corner-adjacent
                 addDisplayLocation(new IntVector(maxX, terrainY, minZ + 1), sideBlock);  // Top east corner-adjacent
-                terrainY = getTerrainYAt(minX, maxZ - 1, null);
+                terrainY = getSurfaceYAt(minX, maxZ - 1, null);
                 addDisplayLocation(new IntVector(minX, terrainY, maxZ - 1), sideBlock);  // Top west corner-adjacent
                 addDisplayLocation(new IntVector(maxX, terrainY, maxZ - 1), sideBlock);  // Top east corner-adjacent
             }
@@ -656,22 +749,22 @@ public class GlowingVisualization extends FakeBlockVisualization {
             for (int x = Math.max(minX + STEP, minX + STEP); x < maxX - STEP / 2 && x < maxX - STEP / 2; x += STEP) {
                 if (x > minX + 1 && x < maxX - 1) {
                     // Get terrain height for each marker position
-                    int markerTerrainY = getTerrainYAt(x, minZ, null); // 2D claims snap to surface level
+                    int markerTerrainY = getSurfaceYAt(x, minZ, null); // 2D claims snap to surface level
                     addDisplayLocation(new IntVector(x, markerTerrainY, minZ), sideBlock);  // North side
-                    markerTerrainY = getTerrainYAt(x, maxZ, null); // 2D claims snap to surface level
+                    markerTerrainY = getSurfaceYAt(x, maxZ, null); // 2D claims snap to surface level
                     addDisplayLocation(new IntVector(x, markerTerrainY, maxZ), sideBlock);  // South side
                 }
             }
             // Additional markers directly adjacent to corners if area is large enough
             if (maxX - minX > 2) {
                 // Get terrain height for each corner-adjacent position
-                int markerTerrainY = getTerrainYAt(minX + 1, minZ, null); // 2D claims snap to surface level
+                int markerTerrainY = getSurfaceYAt(minX + 1, minZ, null); // 2D claims snap to surface level
                 addDisplayLocation(new IntVector(minX + 1, markerTerrainY, minZ), sideBlock);  // North corner-adjacent
-                markerTerrainY = getTerrainYAt(minX + 1, maxZ, null);  // Use correct Z for south side
+                markerTerrainY = getSurfaceYAt(minX + 1, maxZ, null);  // Use correct Z for south side
                 addDisplayLocation(new IntVector(minX + 1, markerTerrainY, maxZ), sideBlock);  // South corner-adjacent
-                markerTerrainY = getTerrainYAt(maxX - 1, minZ, null); // 2D claims snap to surface level
+                markerTerrainY = getSurfaceYAt(maxX - 1, minZ, null); // 2D claims snap to surface level
                 addDisplayLocation(new IntVector(maxX - 1, markerTerrainY, minZ), sideBlock);  // North corner-adjacent
-                markerTerrainY = getTerrainYAt(maxX - 1, maxZ, null);  // Use correct Z for south side
+                markerTerrainY = getSurfaceYAt(maxX - 1, maxZ, null);  // Use correct Z for south side
                 addDisplayLocation(new IntVector(maxX - 1, markerTerrainY, maxZ), sideBlock);  // South corner-adjacent
             }
 
@@ -680,22 +773,22 @@ public class GlowingVisualization extends FakeBlockVisualization {
             for (int z = Math.max(minZ + STEP, minZ + STEP); z < maxZ - STEP / 2 && z < maxZ - STEP / 2; z += STEP) {
                 if (z > minZ + 1 && z < maxZ - 1) {
                     // Get terrain height for each marker position
-                    int markerTerrainY = getTerrainYAt(minX, z, null); // 2D claims snap to surface level
+                    int markerTerrainY = getSurfaceYAt(minX, z, null); // 2D claims snap to surface level
                     addDisplayLocation(new IntVector(minX, markerTerrainY, z), sideBlock);  // West side
-                    markerTerrainY = getTerrainYAt(maxX, z, null); // 2D claims snap to surface level
+                    markerTerrainY = getSurfaceYAt(maxX, z, null); // 2D claims snap to surface level
                     addDisplayLocation(new IntVector(maxX, markerTerrainY, z), sideBlock);  // East side
                 }
             }
             // Additional markers directly adjacent to corners if area is large enough
             if (maxZ - minZ > 2) {
                 // Get terrain height for each corner-adjacent position
-                int markerTerrainY = getTerrainYAt(minX, minZ + 1, null); // 2D claims snap to surface level
+                int markerTerrainY = getSurfaceYAt(minX, minZ + 1, null); // 2D claims snap to surface level
                 addDisplayLocation(new IntVector(minX, markerTerrainY, minZ + 1), sideBlock);  // West corner-adjacent
-                markerTerrainY = getTerrainYAt(maxX, minZ + 1, null);  // Use maxX for east side terrain
+                markerTerrainY = getSurfaceYAt(maxX, minZ + 1, null);  // Use maxX for east side terrain
                 addDisplayLocation(new IntVector(maxX, markerTerrainY, minZ + 1), sideBlock);  // East corner-adjacent
-                markerTerrainY = getTerrainYAt(minX, maxZ - 1, null); // 2D claims snap to surface level
+                markerTerrainY = getSurfaceYAt(minX, maxZ - 1, null); // 2D claims snap to surface level
                 addDisplayLocation(new IntVector(minX, markerTerrainY, maxZ - 1), sideBlock);  // West corner-adjacent
-                markerTerrainY = getTerrainYAt(maxX, maxZ - 1, null);  // Use maxX for east side terrain
+                markerTerrainY = getSurfaceYAt(maxX, maxZ - 1, null);  // Use maxX for east side terrain
                 addDisplayLocation(new IntVector(maxX, markerTerrainY, maxZ - 1), sideBlock);  // East corner-adjacent
             }
         }
@@ -789,9 +882,24 @@ public class GlowingVisualization extends FakeBlockVisualization {
             return;
         }
 
-        // Create location at exact block position (no offset)
+        // For 3D subdivisions and 2D subdivisions, use exact coordinates without terrain snapping
+        // This ensures subdivisions show at their exact positions (including on glass)
+        boolean isSubdivision = blockData.getMaterial() == Material.WHITE_WOOL ||
+                                blockData.getMaterial() == Material.IRON_BLOCK;
+
+        int y;
+        if (isSubdivision) {
+            // Use exact Y coordinate for subdivisions (both 2D and 3D)
+            y = pos.y();
+        } else {
+            // Use terrain snapping for other visualization types
+            Block visibleLocation = getVisibleLocation(pos);
+            y = visibleLocation.getY();
+        }
+
+        // Create location at the determined position (no offset)
         // Ensure Y is within world bounds to match the terrain calculation bounds
-        int y = Math.max(world.getMinHeight(), Math.min(world.getMaxHeight(), pos.y()));
+        y = Math.max(world.getMinHeight(), Math.min(world.getMaxHeight(), y));
         Location loc = new Location(world, pos.x(), y, pos.z());
         
         // Skip if location is in an unloaded chunk
@@ -822,17 +930,14 @@ public class GlowingVisualization extends FakeBlockVisualization {
 
                     spawned.setBlock(blockData);
                     spawned.setGlowing(true);
-                    spawned.setBrightness(new Display.Brightness(0, 0));
-                    spawned.setShadowStrength(0.1f);
-                    spawned.setShadowRadius(0.1f);
+                    spawned.setBrightness(new Display.Brightness(15, 15));
+                    spawned.setShadowStrength(0.0f);
+                    spawned.setShadowRadius(0.0f);
 
-                    // Slightly reduce the size to prevent Z-fighting
-                    float size = 0.98f; // Slightly smaller than full block
-                    float offset = (1.0f - size) / 2; // Center the smaller block
                     spawned.setTransformation(new Transformation(
-                        new Vector3f(offset, offset, offset),
+                        new Vector3f(OUTLINE_OFFSET, OUTLINE_OFFSET, OUTLINE_OFFSET), // Center the scaled display
                         new AxisAngle4f(0, 0, 0, 0),
-                        new Vector3f(size, size, size),
+                        new Vector3f(OUTLINE_SCALE, OUTLINE_SCALE, OUTLINE_SCALE),
                         new AxisAngle4f()
                     ));
 

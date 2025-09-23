@@ -26,8 +26,6 @@ import java.util.function.Consumer;
 public class FakeBlockVisualization extends BlockBoundaryVisualization
 {
 
-    protected final boolean waterTransparent;
-
     /**
      * Construct a new {@code FakeBlockVisualization}.
      *
@@ -37,9 +35,6 @@ public class FakeBlockVisualization extends BlockBoundaryVisualization
      */
     public FakeBlockVisualization(@NotNull World world, @NotNull IntVector visualizeFrom, int height) {
         super(world, visualizeFrom, height);
-
-        // Water is considered transparent based on whether the visualization is initiated in water.
-        waterTransparent = visualizeFrom.toBlock(world).getType() == Material.WATER;
     }
 
     @Override
@@ -49,9 +44,9 @@ public class FakeBlockVisualization extends BlockBoundaryVisualization
         return switch (boundary.type())
         {
             case SUBDIVISION_3D -> addExactBlockElement(Material.IRON_BLOCK.createBlockData());
-            case SUBDIVISION -> addBlockElement(Material.IRON_BLOCK.createBlockData());
+            case SUBDIVISION -> addExactBlockElement(Material.IRON_BLOCK.createBlockData());
             case ADMIN_CLAIM -> {
-                BlockData orangeGlass = Material.ORANGE_STAINED_GLASS.createBlockData();
+                BlockData orangeGlass = Material.GLOWSTONE.createBlockData();
                 yield addBlockElement(orangeGlass);
             }
             case INITIALIZE_ZONE -> addBlockElement(Material.DIAMOND_BLOCK.createBlockData());
@@ -72,7 +67,7 @@ public class FakeBlockVisualization extends BlockBoundaryVisualization
         return switch (boundary.type())
         {
             case ADMIN_CLAIM -> addBlockElement(Material.PUMPKIN.createBlockData());
-            case SUBDIVISION -> addBlockElement(Material.WHITE_WOOL.createBlockData());
+            case SUBDIVISION -> addExactBlockElement(Material.WHITE_WOOL.createBlockData());
             case SUBDIVISION_3D -> addExactBlockElement(Material.WHITE_WOOL.createBlockData()); // exact placement for 3D sides
             case INITIALIZE_ZONE -> addBlockElement(Material.DIAMOND_BLOCK.createBlockData());
             case CONFLICT_ZONE -> addBlockElement(Material.NETHERRACK.createBlockData());
@@ -174,7 +169,7 @@ public class FakeBlockVisualization extends BlockBoundaryVisualization
         }
 
         // Add side markers along Z axis (east and west sides) - following terrain
-        for (int z = Math.max(minZ + STEP, minZ + STEP); z < maxZ - STEP / 2 && z < maxZ - STEP / 2; z += STEP) {
+        for (int z = Math.max(minZ + STEP, minZ + STEP); z < maxZ - STEP / 2 && z < maxZ - 2; z += STEP) {
             if (z > minZ + 1 && z < maxZ - 1) {
                 int terrainY = getSurfaceYAt(minX, z, player);
                 addDisplayedForMainClaim(displayZone, new IntVector(minX, terrainY, z), addSide, boundary.type()); // West side
@@ -261,56 +256,106 @@ public class FakeBlockVisualization extends BlockBoundaryVisualization
 
         // From each corner, place one white wool block along the interior X side and one along the interior Z side
         // NW corner interior directions: +X, +Z
-        if (minX + 1 <= maxX) addDisplayLocation(new IntVector(minX + 1, nwY, minZ), wool, boundary.type());
-        if (minZ + 1 <= maxZ) addDisplayLocation(new IntVector(minX, nwY, minZ + 1), wool, boundary.type());
+        if (minX + 1 <= maxX) {
+            int stubY = getSurfaceYAt(minX + 1, minZ, player);
+            addDisplayLocation(new IntVector(minX + 1, stubY, minZ), wool, boundary.type());
+        }
+        if (minZ + 1 <= maxZ) {
+            int stubY = getSurfaceYAt(minX, minZ + 1, player);
+            addDisplayLocation(new IntVector(minX, stubY, minZ + 1), wool, boundary.type());
+        }
 
         // SW corner interior directions: +X, -Z
-        if (minX + 1 <= maxX) addDisplayLocation(new IntVector(minX + 1, swY, maxZ), wool, boundary.type());
-        if (maxZ - 1 >= minZ) addDisplayLocation(new IntVector(minX, swY, maxZ - 1), wool, boundary.type());
+        if (minX + 1 <= maxX) {
+            int stubY = getSurfaceYAt(minX + 1, maxZ, player);
+            addDisplayLocation(new IntVector(minX + 1, stubY, maxZ), wool, boundary.type());
+        }
+        if (maxZ - 1 >= minZ) {
+            int stubY = getSurfaceYAt(minX, maxZ - 1, player);
+            addDisplayLocation(new IntVector(minX, stubY, maxZ - 1), wool, boundary.type());
+        }
 
         // NE corner interior directions: -X, +Z
-        if (maxX - 1 >= minX) addDisplayLocation(new IntVector(maxX - 1, neY, minZ), wool, boundary.type());
-        if (minZ + 1 <= maxZ) addDisplayLocation(new IntVector(maxX, neY, minZ + 1), wool, boundary.type());
+        if (maxX - 1 >= minX) {
+            int stubY = getSurfaceYAt(maxX - 1, minZ, player);
+            addDisplayLocation(new IntVector(maxX - 1, stubY, minZ), wool, boundary.type());
+        }
+        if (minZ + 1 <= maxZ) {
+            int stubY = getSurfaceYAt(maxX, minZ + 1, player);
+            addDisplayLocation(new IntVector(maxX, stubY, minZ + 1), wool, boundary.type());
+        }
 
         // SE corner interior directions: -X, -Z
-        if (maxX - 1 >= minX) addDisplayLocation(new IntVector(maxX - 1, seY, maxZ), wool, boundary.type());
-        if (maxZ - 1 >= minZ) addDisplayLocation(new IntVector(maxX, seY, maxZ - 1), wool, boundary.type());
+        if (maxX - 1 >= minX) {
+            int stubY = getSurfaceYAt(maxX - 1, maxZ, player);
+            addDisplayLocation(new IntVector(maxX - 1, stubY, maxZ), wool, boundary.type());
+        }
+        if (maxZ - 1 >= minZ) {
+            int stubY = getSurfaceYAt(maxX, maxZ - 1, player);
+            addDisplayLocation(new IntVector(maxX, stubY, maxZ - 1), wool, boundary.type());
+        }
     }
 
     /**
-     * Gets the surface Y coordinate at a specific x,z position
-     * For main claims, allows 1-block occurrences to pass through to the next block below
+     * Gets the surface Y coordinate at a specific x,z position with grass block handling
+     * This ensures visualizations snap to grass_block instead of grass, matching GlowingVisualization
      */
     private int getSurfaceYAt(int x, int z, Player player) {
         if (!world.isChunkLoaded(x >> 4, z >> 4)) {
             return player != null ? player.getLocation().getBlockY() - 1 : world.getMinHeight() + 63;
         }
-        
+
         // Start from the highest block at this x,z position
         int y = world.getMaxHeight() - 1;
-        boolean foundSolid = false;
-        
-        // Find the highest non-air, non-transparent block
+
+        // Find the highest non-air block (including water as valid surface)
         while (y >= world.getMinHeight()) {
             Block block = world.getBlockAt(x, y, z);
-            
-            // If we find a solid block after finding air, we've found the surface
-            if (foundSolid && !isTransparent(block)) {
-                // For main claims, we want to allow 1-block occurrences to pass through
-                // So we return the block below the surface
-                return y;
+
+            // If we find a non-air block, we've found the surface
+            if (block.getType() != Material.AIR) {
+                // For transparent blocks (except water), find the actual surface below
+                if (isTransparent(block) && block.getType() != Material.WATER) {
+                    return findSurfaceBelowTransparentBlocks(x, z, y);
+                }
+                return y; // Return the Y of the highest non-air block (e.g., water, glass, or solid)
             }
-            
-            // If we find air, mark that we've found the surface
-            if (block.getType() == Material.AIR) {
-                foundSolid = true;
-            }
-            
+
             y--;
         }
-        
+
         // If we get here, return the minimum height
         return world.getMinHeight();
+    }
+
+    /**
+     * Finds the actual surface Y coordinate below a stack of transparent blocks
+     * @param x The x coordinate
+     * @param z The z coordinate
+     * @param startY The Y coordinate where transparent blocks start
+     * @return The Y coordinate of the actual surface below the transparent blocks
+     */
+    private int findSurfaceBelowTransparentBlocks(int x, int z, int startY) {
+        int y = startY;
+
+        // Count how many transparent blocks are stacked
+        int transparentBlockCount = 0;
+        while (y >= world.getMinHeight() && isTransparent(world.getBlockAt(x, y, z)) && world.getBlockAt(x, y, z).getType() != Material.WATER) {
+            transparentBlockCount++;
+            y--;
+        }
+
+        // The surface is the first non-transparent block we find
+        Block surfaceBlock = world.getBlockAt(x, y, z);
+
+        // If we found a valid surface block, return its Y coordinate
+        if (surfaceBlock.getType() != Material.AIR) {
+            return y;
+        }
+
+        // If no valid surface found, return the original Y minus the transparent block count
+        // This handles cases where transparent blocks are floating above air
+        return startY - transparentBlockCount;
     }
 
     /**
@@ -380,10 +425,20 @@ public class FakeBlockVisualization extends BlockBoundaryVisualization
             coordinate.x() >= this.displayZone.getMinX() && coordinate.x() <= this.displayZone.getMaxX() &&
             coordinate.y() >= this.displayZone.getMinY() && coordinate.y() <= this.displayZone.getMaxY() &&
             coordinate.z() >= this.displayZone.getMinZ() && coordinate.z() <= this.displayZone.getMaxZ()) {
-            // Use the explicit block data provided by the caller (e.g., iron for corners),
-            // so corners render correctly and sides use their own side material via addSideElements.
-            Consumer<@NotNull IntVector> addElement = addBlockElement(blockData);
-            addElement.accept(coordinate);
+            // For 2D subdivisions, use exact placement to avoid moving blocks from glass surfaces
+            // Other visualization types use getVisibleLocation for terrain snapping
+            if (blockData.getMaterial() == Material.IRON_BLOCK || blockData.getMaterial() == Material.WHITE_WOOL) {
+                // This is a 2D subdivision - use exact placement
+                Block exactLocation = coordinate.toBlock(world);
+                elements.add(new FakeBlockElement(coordinate, exactLocation.getBlockData(), blockData));
+            } else {
+                // Other visualization types - use terrain snapping
+                Block visibleLocation = getVisibleLocation(coordinate);
+                int x = coordinate.x();
+                int y = visibleLocation.getY();
+                int z = coordinate.z();
+                elements.add(new FakeBlockElement(new IntVector(x, y, z), visibleLocation.getBlockData(), blockData));
+            }
         }
     }
 
@@ -497,18 +552,20 @@ public class FakeBlockVisualization extends BlockBoundaryVisualization
     }
 
     /**
-     * Create a {@link Consumer} that adds an appropriate {@link FakeBlockElement} for the given {@link IntVector}.
+     * Create a {@link Consumer} that adds a {@link FakeBlockElement} at a terrain-snapped location (not exact coordinates).
+     * This is used for most visualization types to ensure blocks appear at visible surface levels.
      *
      * @param fakeData the fake {@link BlockData}
-     * @return the function for determining a visible fake block location
+     * @return the function for placing a fake block at a terrain-snapped location
      */
     private @NotNull Consumer<@NotNull IntVector> addBlockElement(@NotNull BlockData fakeData)
     {
         return vector -> {
-            // Obtain visible location from starting point.
             Block visibleLocation = getVisibleLocation(vector);
-            // Create an element using our fake data and the determined block's real data.
-            elements.add(new FakeBlockElement(new IntVector(visibleLocation), visibleLocation.getBlockData(), fakeData));
+            int x = vector.x();
+            int y = visibleLocation.getY();
+            int z = vector.z();
+            elements.add(new FakeBlockElement(new IntVector(x, y, z), visibleLocation.getBlockData(), fakeData));
         };
     }
 
@@ -529,6 +586,20 @@ public class FakeBlockVisualization extends BlockBoundaryVisualization
     }
 
     /**
+     * Checks if a material is a glass block that should be treated as a solid surface
+     * @param material The material to check
+     * @return true if the material is a glass block
+     */
+    private boolean isGlassBlock(Material material) {
+        return material == Material.GLASS ||
+               material == Material.GLASS_PANE ||
+               material == Material.TINTED_GLASS ||
+               material.name().contains("GLASS") ||
+               material.name().endsWith("_GLASS") ||
+               material.name().endsWith("_GLASS_PANE");
+    }
+
+    /**
      * Find a location that should be visible to players. This causes the visualization to "cling" to the ground.
      *
      * @param vector the {@link IntVector} of the display location
@@ -537,11 +608,24 @@ public class FakeBlockVisualization extends BlockBoundaryVisualization
     private Block getVisibleLocation(@NotNull IntVector vector)
     {
         Block block = vector.toBlock(world);
+
+        // Special handling for water surfaces
+        if (block.getType() == Material.WATER) {
+            return block; // Stay at water surface
+        }
+
+        // Check if the block is glass - if so, treat it as solid and stay on it
+        if (isGlassBlock(block.getType())) {
+            return block; // Stay at glass surface
+        }
+
         BlockFace direction = (isTransparent(block)) ? BlockFace.DOWN : BlockFace.UP;
 
         while (block.getY() >= world.getMinHeight() &&
                 block.getY() < world.getMaxHeight() - 1 &&
-                (!isTransparent(block.getRelative(BlockFace.UP)) || isTransparent(block)))
+                (!isTransparent(block.getRelative(BlockFace.UP)) || isTransparent(block)) &&
+                block.getType() != Material.WATER &&
+                !isGlassBlock(block.getType()))
         {
             block = block.getRelative(direction);
         }
@@ -559,13 +643,23 @@ public class FakeBlockVisualization extends BlockBoundaryVisualization
     {
         Material blockMaterial = block.getType();
 
-        // Custom per-material definitions.
+        // Check if it's glass first - glass should be treated as solid for visualization purposes
+        if (isGlassBlock(blockMaterial)) {
+            return false; // Glass is not transparent for visualization purposes
+        }
+
+        // Custom per-material definitions matching GlowingVisualization
         switch (blockMaterial)
         {
             case WATER:
-                return waterTransparent;
+                return true; // Treat water as transparent so visualizations float on water surface
+            case SNOW_BLOCK:
+                return true;
             case SNOW:
                 return false;
+            default:
+                // Fall through to the general logic below
+                break;
         }
 
         if (blockMaterial.isAir()
@@ -576,7 +670,7 @@ public class FakeBlockVisualization extends BlockBoundaryVisualization
                 || Tag.WALL_SIGNS.isTagged(blockMaterial))
             return true;
 
-        return block.getType().isTransparent();
+        return !block.getType().isOccluding();
     }
 
 }

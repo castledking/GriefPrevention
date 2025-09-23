@@ -1213,6 +1213,15 @@ public abstract class DataStore
                     }
                 }
 
+                // Prevent parent/admin claims from overlapping other parent/admin claims
+                // But allow subdivisions to be created on the same X/Z borders
+                if (newClaim.parent == null && otherClaim.parent == null) {
+                    // Both are top-level claims (parent or admin claims) - prevent overlap
+                    result.succeeded = false;
+                    result.claim = otherClaim;
+                    return result;
+                }
+
                 // Special case: When resizing a top-level claim (dry run via createClaim during resize),
                 // allow zero-area intersection (edge/corner touching) with neighboring claims.
                 // This prevents false-positive conflicts when expanding from a corner shared with a child subdivision
