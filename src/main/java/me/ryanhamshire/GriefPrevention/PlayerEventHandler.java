@@ -4894,7 +4894,7 @@ public class PlayerEventHandler implements Listener {
         // Check if player clicked inside their claim but NOT on the boundary
         OrthogonalPoint2i clickedPoint = new OrthogonalPoint2i(clickedBlock.getX(), clickedBlock.getZ());
         boolean isInteriorClick = !isBoundaryPoint(claim.getBoundaryPolygon(), clickedPoint)
-                && claim.contains(clickedBlock.getLocation(), true, false);
+                && claim.getBoundaryPolygon().containsCell(clickedPoint.x(), clickedPoint.z());
 
         // Allow interior clicks when an active cut path exists (openPath starts on the boundary)
         if (session.openPath() != null && !session.openPath().points().isEmpty()) {
@@ -4906,7 +4906,7 @@ public class PlayerEventHandler implements Listener {
                         .anyMatch(p -> !isBoundaryPoint(cutClaim.getBoundaryPolygon(), p)
                                 && cutClaim.getBoundaryPolygon().containsCell(p.x(), p.z()));
                 boolean clickedOnBoundary = isBoundaryPoint(cutClaim.getBoundaryPolygon(), clickedPoint)
-                        && cutClaim.contains(clickedBlock.getLocation(), true, false);
+                        && cutClaim.getBoundaryPolygon().containsCell(clickedPoint.x(), clickedPoint.z());
                 // Close the cut path: click at start, or click any boundary point with interior points
                 if (hasCutInteriorPoints
                         && (clickedPoint.equals(firstPoint) || clickedOnBoundary)) {
@@ -4996,7 +4996,7 @@ public class PlayerEventHandler implements Listener {
             final Claim cutClaim = claim;
             if (isBoundaryPoint(cutClaim.getBoundaryPolygon(), cutFirstPoint)) {
                 boolean isInteriorCutClick = !isBoundaryPoint(cutClaim.getBoundaryPolygon(), clickedCutPoint)
-                        && cutClaim.contains(clickedBlock.getLocation(), true, false);
+                        && cutClaim.getBoundaryPolygon().containsCell(clickedCutPoint.x(), clickedCutPoint.z());
                 // Check if closing the cut path back to the start
                 if (clickedCutPoint.equals(cutFirstPoint) && session.openPath().points().size() >= 3) {
                     boolean hasInteriorPoints = session.openPath().points().stream()

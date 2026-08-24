@@ -2383,7 +2383,7 @@ final class ClaimToolDispatcher
                 final Claim cutTargetClaim = targetClaim;
                 if (isBoundaryPoint(cutTargetClaim.getBoundaryPolygon(), cutFirstPoint)) {
                     boolean isInteriorCutClick = !isBoundaryPoint(cutTargetClaim.getBoundaryPolygon(), clickedCutPoint)
-                            && cutTargetClaim.contains(clickedBlock.getLocation(), true, false);
+                            && cutTargetClaim.getBoundaryPolygon().containsCell(clickedCutPoint.x(), clickedCutPoint.z());
                     boolean hasCutInteriorPoints = session.openPath().points().stream()
                             .skip(1)
                             .anyMatch(p -> !isBoundaryPoint(cutTargetClaim.getBoundaryPolygon(), p)
@@ -2574,7 +2574,7 @@ final class ClaimToolDispatcher
         OrthogonalPoint2i clickedPoint = new OrthogonalPoint2i(clickedBlock.getX(), clickedBlock.getZ());
         boolean isInteriorClick = !isBoundaryPoint(claim.getBoundaryPolygon(), clickedPoint)
                 && claim.contains(clickedBlock.getLocation(), true, false);
-        GriefPrevention.AddLogEntry("[GP Debug] handleShapedModeInteraction: clickedPoint=" + clickedPoint + " isBoundary=" + isBoundaryPoint(claim.getBoundaryPolygon(), clickedPoint) + " contains=" + claim.contains(clickedBlock.getLocation(), true, false) + " isInteriorClick=" + isInteriorClick, CustomLogEntryTypes.Debug, false);
+        GriefPrevention.AddLogEntry("[GP Debug] handleShapedModeInteraction: clickedPoint=" + clickedPoint + " isBoundary=" + isBoundaryPoint(claim.getBoundaryPolygon(), clickedPoint) + " containsCell=" + claim.getBoundaryPolygon().containsCell(clickedPoint.x(), clickedPoint.z()) + " isInteriorClick=" + isInteriorClick, CustomLogEntryTypes.Debug, false);
 
         // Allow interior clicks when an active cut path exists (openPath starts on the boundary)
         if (session.openPath() != null && !session.openPath().points().isEmpty()) {
@@ -2586,7 +2586,7 @@ final class ClaimToolDispatcher
                         .anyMatch(p -> !isBoundaryPoint(cutClaim.getBoundaryPolygon(), p)
                                 && cutClaim.getBoundaryPolygon().containsCell(p.x(), p.z()));
                 boolean clickedOnBoundary = isBoundaryPoint(cutClaim.getBoundaryPolygon(), clickedPoint)
-                        && cutClaim.contains(clickedBlock.getLocation(), true, false);
+                        && cutClaim.getBoundaryPolygon().containsCell(clickedPoint.x(), clickedPoint.z());
                 // Close the cut path: click at start, or click any boundary point with interior points
                 if (hasCutInteriorPoints
                         && (clickedPoint.equals(firstPoint) || clickedOnBoundary)) {
