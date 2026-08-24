@@ -220,6 +220,7 @@ Messages:
   ResizeFailSubdivision: 'Bölge yeniden boyutlandırılamıyor: Yeni sınırlar mevcut bir alt bölgeyi dışarıda bırakırdı. Lütfen önce alt bölgeyi kaldırın veya taşıyın.'
   ResizeFailSubdivisionExceedsParent: 'Yeniden boyutlandırılamadı: Alt bölge her yönde ana bölgenin sınırları içinde tutulmadı, ana bölgede çakışmaya neden oldu.'
   ShapedClaimInteriorClick: Burada şekilli bir bölge başlatamazsınız. Yeni bir şekilli bölge başlatabilir veya mevcut bölgenizin sınırında segmentler oluşturup bunları genişletebilirsiniz.
+  ShapedClaimsCutStarted: "Bölgenizin şekilli kesimine başlama. Şekillendirmeye devam edin ve bitirmek için bir sınıra geri dönün. Uyarı: kesmek, o araziyi talep etmemek anlamına gelir."
   ShowNearbyClaims: '{0} bölge bulundu.'
   NoChatUntilMove: Üzgünüz, sohbet edebilmek için biraz daha hareket etmelisiniz. Burada çok fazla spam botu alıyoruz. :)
   SetClaimBlocksSuccess: Tahakkuk eden bölge blokları güncellendi.

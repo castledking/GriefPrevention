@@ -36,6 +36,7 @@ import com.griefprevention.events.BoundaryVisualizationEvent;
 import com.griefprevention.geometry.OrthogonalEdge2i;
 import com.griefprevention.geometry.OrthogonalPoint2i;
 import com.griefprevention.geometry.OrthogonalPolygon;
+import com.griefprevention.geometry.OrthogonalPolygonValidationIssue;
 import com.griefprevention.geometry.OrthogonalPolygonValidationIssueType;
 import com.griefprevention.geometry.OrthogonalPolygonValidationResult;
 import com.griefprevention.visualization.Boundary;
@@ -1998,6 +1999,11 @@ final class ClaimToolDispatcher
             }
         }
 
+        // Don't intercept shaped mode — let handleShapedModeInteraction process it
+        if (playerData.shovelMode == ShovelMode.Shaped || playerData.shovelMode == ShovelMode.ShapedSubdivide) {
+            return false;
+        }
+
         startClaimResizeSelection(player, playerData, clickedClaim, clickedBlock);
         return true;
     }
@@ -2274,6 +2280,7 @@ final class ClaimToolDispatcher
 
     private void handleShapedModeInteraction(@NotNull Player player, @NotNull PlayerData playerData, @NotNull Block clickedBlock) {
         ClaimEditorSession session = playerData.getClaimEditorSession();
+        GriefPrevention.AddLogEntry("[GP Debug] handleShapedModeInteraction: mode=" + session.mode() + " activeTarget=" + session.activeTarget() + " openPath=" + session.openPath() + " click=" + clickedBlock.getX() + "," + clickedBlock.getY() + "," + clickedBlock.getZ(), CustomLogEntryTypes.Debug, false);
         if (session.mode() != com.griefprevention.claims.editor.ClaimEditorMode.SHAPED) {
             session = session.withMode(com.griefprevention.claims.editor.ClaimEditorMode.SHAPED, ClaimEditSource.TOOL);
         }
@@ -2369,6 +2376,68 @@ final class ClaimToolDispatcher
                     return;
                 }
 
+                // Cut path detection: when there's an active openPath starting from the boundary,
+                // allow interior clicks to build a cut path and detect closure back to the start.
+                OrthogonalPoint2i clickedCutPoint = new OrthogonalPoint2i(clickedBlock.getX(), clickedBlock.getZ());
+                OrthogonalPoint2i cutFirstPoint = session.openPath().points().get(0);
+                final Claim cutTargetClaim = targetClaim;
+                if (isBoundaryPoint(cutTargetClaim.getBoundaryPolygon(), cutFirstPoint)) {
+                    boolean isInteriorCutClick = !isBoundaryPoint(cutTargetClaim.getBoundaryPolygon(), clickedCutPoint)
+                            && cutTargetClaim.contains(clickedBlock.getLocation(), true, false);
+                    boolean hasCutInteriorPoints = session.openPath().points().stream()
+                            .skip(1)
+                            .anyMatch(p -> !isBoundaryPoint(cutTargetClaim.getBoundaryPolygon(), p)
+                                    && cutTargetClaim.getBoundaryPolygon().containsCell(p.x(), p.z()));
+                    // Closing the cut path: click back at the start point OR click any boundary point
+                    // while the path has interior points
+                    if (hasCutInteriorPoints
+                            && (clickedCutPoint.equals(cutFirstPoint)
+                                || isBoundaryPoint(cutTargetClaim.getBoundaryPolygon(), clickedCutPoint))) {
+                        // Add the boundary closure point if it's not the start
+                        if (!clickedCutPoint.equals(cutFirstPoint)) {
+                            ShapedPathDraft draft = session.openPath();
+                            List<OrthogonalPoint2i> points = new ArrayList<>(draft.points());
+                            points.add(clickedCutPoint);
+                            ShapedPathDraft closedDraft = new ShapedPathDraft(draft.claimId(), points, null, true);
+                            session = session.withOpenPath(closedDraft);
+                        }
+                        finalizeCutPath(player, playerData, cutTargetClaim, session, clickedBlock);
+                        return;
+                    }
+                    // Continue the cut path — add interior point as a draft corner
+                    if (isInteriorCutClick && !clickedCutPoint.equals(cutFirstPoint)) {
+                        if (session.openPath().points().size() == 1) {
+                            GriefPrevention.sendMessage(player, TextMode.Instr, Messages.ShapedClaimsCutStarted);
+                        }
+                        OrthogonalPoint2i lastPathPoint = session.openPath().points().get(session.openPath().points().size() - 1);
+                        int dX = Math.abs(clickedCutPoint.x() - lastPathPoint.x());
+                        int dZ = Math.abs(clickedCutPoint.z() - lastPathPoint.z());
+                        if (dX != dZ) {
+                            clickedCutPoint = (dX < dZ)
+                                ? new OrthogonalPoint2i(lastPathPoint.x(), clickedCutPoint.z())
+                                : new OrthogonalPoint2i(clickedCutPoint.x(), lastPathPoint.z());
+                        }
+                        OrthogonalPolygon basePolygon = cutTargetClaim.getBoundaryPolygon();
+                        ShapedPathDraft draft = session.openPath();
+                        List<OrthogonalPoint2i> points = new ArrayList<>(draft.points());
+                        points.add(clickedCutPoint);
+                        ShapedPathDraft updatedDraft = new ShapedPathDraft(draft.claimId(), points, null, false);
+                        ClaimEditPreview preview = new ClaimEditPreview(
+                                basePolygon,
+                                null,
+                                updatedDraft.points(),
+                                null,
+                                Collections.emptyList(),
+                                Collections.emptyList(),
+                                Collections.singletonList("Cut path point added.")
+                        );
+                        ClaimEditorSession updatedSession = session.withOpenPath(updatedDraft).withPreview(preview);
+                        playerData.setClaimEditorSession(updatedSession);
+                        visualizeShapedEditState(player, updatedSession, clickedBlock.getY());
+                        return;
+                    }
+                }
+
                 // Check if we're clicking back on a claim that has cross-claim boundary markers
                 // This indicates a merge operation in progress
                 if (playerData.hasCrossClaimBoundaryMarker(targetClaim.getID())) {
@@ -2413,6 +2482,7 @@ final class ClaimToolDispatcher
         while (claim != null && claim.parent != null) {
             claim = claim.parent;
         }
+        GriefPrevention.AddLogEntry("[GP Debug] handleShapedModeInteraction: claim=" + (claim != null ? claim.getID() : "null") + " is3D=" + (claim != null && claim.is3D()), CustomLogEntryTypes.Debug, false);
 
         if (claim == null) {
             Claim targetClaim = resolveExistingShapedTarget(session);
@@ -2502,8 +2572,71 @@ final class ClaimToolDispatcher
 
         // Check if player clicked inside their claim but NOT on the boundary
         OrthogonalPoint2i clickedPoint = new OrthogonalPoint2i(clickedBlock.getX(), clickedBlock.getZ());
-        if (!isBoundaryPoint(claim.getBoundaryPolygon(), clickedPoint)
-                && claim.contains(clickedBlock.getLocation(), true, false)) {
+        boolean isInteriorClick = !isBoundaryPoint(claim.getBoundaryPolygon(), clickedPoint)
+                && claim.contains(clickedBlock.getLocation(), true, false);
+        GriefPrevention.AddLogEntry("[GP Debug] handleShapedModeInteraction: clickedPoint=" + clickedPoint + " isBoundary=" + isBoundaryPoint(claim.getBoundaryPolygon(), clickedPoint) + " contains=" + claim.contains(clickedBlock.getLocation(), true, false) + " isInteriorClick=" + isInteriorClick, CustomLogEntryTypes.Debug, false);
+
+        // Allow interior clicks when an active cut path exists (openPath starts on the boundary)
+        if (session.openPath() != null && !session.openPath().points().isEmpty()) {
+            OrthogonalPoint2i firstPoint = session.openPath().points().get(0);
+            final Claim cutClaim = claim;
+            if (isBoundaryPoint(cutClaim.getBoundaryPolygon(), firstPoint)) {
+                boolean hasCutInteriorPoints = session.openPath().points().stream()
+                        .skip(1)
+                        .anyMatch(p -> !isBoundaryPoint(cutClaim.getBoundaryPolygon(), p)
+                                && cutClaim.getBoundaryPolygon().containsCell(p.x(), p.z()));
+                boolean clickedOnBoundary = isBoundaryPoint(cutClaim.getBoundaryPolygon(), clickedPoint)
+                        && cutClaim.contains(clickedBlock.getLocation(), true, false);
+                // Close the cut path: click at start, or click any boundary point with interior points
+                if (hasCutInteriorPoints
+                        && (clickedPoint.equals(firstPoint) || clickedOnBoundary)) {
+                    if (!clickedPoint.equals(firstPoint)) {
+                        ShapedPathDraft draft = session.openPath();
+                        List<OrthogonalPoint2i> points = new ArrayList<>(draft.points());
+                        points.add(clickedPoint);
+                        ShapedPathDraft closedDraft = new ShapedPathDraft(draft.claimId(), points, null, true);
+                        session = session.withOpenPath(closedDraft);
+                    }
+                    finalizeCutPath(player, playerData, cutClaim, session, clickedBlock);
+                    return;
+                }
+                // Continue the cut path — add this interior point as a draft corner
+                if (isInteriorClick && !clickedPoint.equals(firstPoint)) {
+                    // Show cut-started message on first interior click
+                    if (session.openPath().points().size() == 1) {
+                        GriefPrevention.sendMessage(player, TextMode.Instr, Messages.ShapedClaimsCutStarted);
+                    }
+                    OrthogonalPoint2i lastPathPoint = session.openPath().points().get(session.openPath().points().size() - 1);
+                    int dX = Math.abs(clickedPoint.x() - lastPathPoint.x());
+                    int dZ = Math.abs(clickedPoint.z() - lastPathPoint.z());
+                    if (dX != dZ) {
+                        clickedPoint = (dX < dZ)
+                            ? new OrthogonalPoint2i(lastPathPoint.x(), clickedPoint.z())
+                            : new OrthogonalPoint2i(clickedPoint.x(), lastPathPoint.z());
+                    }
+                    OrthogonalPolygon basePolygon = cutClaim.getBoundaryPolygon();
+                    ShapedPathDraft draft = session.openPath();
+                    List<OrthogonalPoint2i> points = new ArrayList<>(draft.points());
+                    points.add(clickedPoint);
+                    ShapedPathDraft updatedDraft = new ShapedPathDraft(draft.claimId(), points, null, false);
+                    ClaimEditPreview preview = new ClaimEditPreview(
+                            basePolygon,
+                            null,
+                            updatedDraft.points(),
+                            null,
+                            Collections.emptyList(),
+                            Collections.emptyList(),
+                            Collections.singletonList("Cut path point added.")
+                    );
+                    ClaimEditorSession updatedSession = session.withOpenPath(updatedDraft).withPreview(preview);
+                    playerData.setClaimEditorSession(updatedSession);
+                    visualizeShapedEditState(player, updatedSession, clickedBlock.getY());
+                    return;
+                }
+            }
+        }
+
+        if (isInteriorClick) {
             GriefPrevention.sendMessage(player, TextMode.Err, Messages.ShapedClaimInteriorClick);
             visualizeConflict(player, playerData, claim, clickedBlock, claim.is3D());
             return;
@@ -2526,9 +2659,6 @@ final class ClaimToolDispatcher
             return;
         }
         claim = boundaryNodeResult.claim();
-        if (boundaryNodeResult.markerEdited() && !player.isSneaking()) {
-            return;
-        }
 
         session = loadClaimIntoShapedSession(playerData.getClaimEditorSession(), claim);
         OrthogonalPoint2i adjustedPoint = snapOutsideShapedCornerToMinimumDistance(
@@ -3374,6 +3504,19 @@ final class ClaimToolDispatcher
         return polygon.edges().stream().anyMatch(edge -> edge.containsPoint(point));
     }
 
+    private boolean isPointOnEdge(@NotNull OrthogonalPoint2i a, @NotNull OrthogonalPoint2i b, @NotNull OrthogonalPoint2i p)
+    {
+        if (a.x() == b.x()) {
+            return p.x() == a.x()
+                    && Math.min(a.z(), b.z()) <= p.z()
+                    && p.z() <= Math.max(a.z(), b.z());
+        } else {
+            return p.z() == a.z()
+                    && Math.min(a.x(), b.x()) <= p.x()
+                    && p.x() <= Math.max(a.x(), b.x());
+        }
+    }
+
     private @NotNull ClaimEditorSession loadClaimIntoShapedSession(@NotNull ClaimEditorSession session, @NotNull Claim claim) {
         if (session.activeTarget() != null
                 && session.activeTarget().claimId() != null
@@ -3600,6 +3743,186 @@ final class ClaimToolDispatcher
         BoundaryVisualization.visualizeClaim(player, updateResult.claim,
                 updateResult.claim.isAdminClaim() ? VisualizationType.ADMIN_CLAIM : VisualizationType.CLAIM,
                 clickedBlock);
+    }
+
+    /**
+     * Finalize a shaped cut path that closes back to the boundary.
+     * Constructs the result polygon by splicing the cut path into the original boundary.
+     */
+    private void finalizeCutPath(
+            @NotNull Player player,
+            @NotNull PlayerData playerData,
+            @NotNull Claim claim,
+            @NotNull ClaimEditorSession session,
+            @NotNull Block clickedBlock) {
+        ShapedPathDraft openPath = session.openPath();
+        if (openPath == null || openPath.points().size() < 3) {
+            GriefPrevention.sendMessage(player, TextMode.Err, "A cut path needs at least 3 points to close.");
+            return;
+        }
+
+        OrthogonalPolygon originalPolygon = claim.getBoundaryPolygon();
+        List<OrthogonalPoint2i> pathPoints = openPath.points();
+
+        // The cut path: [boundaryStart, interior1, ..., boundaryEnd]
+        OrthogonalPoint2i cutStart = pathPoints.get(0);
+        OrthogonalPoint2i cutEnd = pathPoints.get(pathPoints.size() - 1);
+
+        if (!isBoundaryPoint(originalPolygon, cutStart)) {
+            GriefPrevention.sendMessage(player, TextMode.Err, "Cut path must start on the claim boundary.");
+            return;
+        }
+        if (!isBoundaryPoint(originalPolygon, cutEnd)) {
+            GriefPrevention.sendMessage(player, TextMode.Err, "Cut path must end on the claim boundary.");
+            return;
+        }
+        if (cutStart.equals(cutEnd)) {
+            GriefPrevention.sendMessage(player, TextMode.Err, "Cut start and end must be different boundary points.");
+            visualizeShapedEditState(player, session, clickedBlock.getY());
+            return;
+        }
+
+        // Build result polygon by walking original boundary from cutEnd back to cutStart
+        // (the long way around), then following the cut path from cutStart through interior to cutEnd.
+        List<OrthogonalPoint2i> origPath = new ArrayList<>(originalPolygon.closedPath());
+        // Remove closing duplicate
+        if (origPath.size() > 1 && origPath.get(origPath.size() - 1).equals(origPath.get(0))) {
+            origPath.remove(origPath.size() - 1);
+        }
+
+        // Find which edge of the original boundary contains cutStart and cutEnd
+        int startEdgeIdx = -1;
+        int endEdgeIdx = -1;
+        for (int i = 0; i < origPath.size(); i++) {
+            OrthogonalPoint2i a = origPath.get(i);
+            OrthogonalPoint2i b = origPath.get((i + 1) % origPath.size());
+            if (startEdgeIdx == -1 && isPointOnEdge(a, b, cutStart)) {
+                startEdgeIdx = i;
+            }
+            if (endEdgeIdx == -1 && isPointOnEdge(a, b, cutEnd)) {
+                endEdgeIdx = i;
+            }
+        }
+
+        if (startEdgeIdx == -1 || endEdgeIdx == -1) {
+            GriefPrevention.sendMessage(player, TextMode.Err, "Could not locate cut points on the claim boundary.");
+            visualizeShapedEditState(player, session, clickedBlock.getY());
+            return;
+        }
+
+        // Build the result polygon:
+        // 1) Follow the cut path from cutStart through interior to cutEnd
+        // 2) Walk original boundary from endEdgeIdx forward back to startEdgeIdx
+        List<OrthogonalPoint2i> resultCorners = new ArrayList<>();
+
+        // Add cut path (start → interior → end)
+        for (OrthogonalPoint2i p : pathPoints) {
+            resultCorners.add(p);
+        }
+
+        // Walk original boundary from endEdgeIdx+1 back to startEdgeIdx
+        int idx = (endEdgeIdx + 1) % origPath.size();
+        while (idx != startEdgeIdx) {
+            resultCorners.add(origPath.get(idx));
+            idx = (idx + 1) % origPath.size();
+        }
+        // Add the vertex at startEdgeIdx (the corner before cutStart on the edge)
+        resultCorners.add(origPath.get(startEdgeIdx));
+
+        // Close the polygon back to cutStart
+        resultCorners.add(cutStart);
+
+        // Validate and construct the result polygon
+        GriefPrevention.AddLogEntry("[GP Cut] resultCorners: " + resultCorners, CustomLogEntryTypes.Debug, false);
+        for (int ei = 0; ei + 1 < resultCorners.size(); ei++) {
+            OrthogonalPoint2i ea = resultCorners.get(ei);
+            OrthogonalPoint2i eb = resultCorners.get(ei + 1);
+            boolean horiz = ea.z() == eb.z();
+            boolean vert = ea.x() == eb.x();
+            if (!horiz && !vert) {
+                GriefPrevention.AddLogEntry("[GP Cut] NON-ORTHOGONAL edge " + ei + ": " + ea + " -> " + eb, CustomLogEntryTypes.Debug, false);
+            }
+        }
+        OrthogonalPolygonValidationResult validation = OrthogonalPolygon.validatePath(resultCorners);
+        if (!validation.isValid() || validation.polygon() == null) {
+            for (OrthogonalPolygonValidationIssue issue : validation.issues()) {
+                GriefPrevention.AddLogEntry("[GP Cut] Validation issue: " + issue.type() + " - " + issue.message() + " at " + issue.point(), CustomLogEntryTypes.Debug, false);
+            }
+            GriefPrevention.sendMessage(player, TextMode.Err, "The resulting shape is not valid.");
+            visualizeShapedEditState(player, session, clickedBlock.getY());
+            return;
+        }
+        OrthogonalPolygon resultPolygon = validation.polygon();
+
+        // Verify the result is smaller than the original
+        Set<OrthogonalPoint2i> resultCells = new HashSet<>();
+        for (int x = resultPolygon.minX(); x <= resultPolygon.maxX(); x++) {
+            for (int z = resultPolygon.minZ(); z <= resultPolygon.maxZ(); z++) {
+                if (resultPolygon.containsCell(x, z)) {
+                    resultCells.add(new OrthogonalPoint2i(x, z));
+                }
+            }
+        }
+        Set<OrthogonalPoint2i> originalCells = new HashSet<>();
+        for (int x = originalPolygon.minX(); x <= originalPolygon.maxX(); x++) {
+            for (int z = originalPolygon.minZ(); z <= originalPolygon.maxZ(); z++) {
+                if (originalPolygon.containsCell(x, z)) {
+                    originalCells.add(new OrthogonalPoint2i(x, z));
+                }
+            }
+        }
+        if (resultCells.size() >= originalCells.size()) {
+            GriefPrevention.sendMessage(player, TextMode.Err, "The cut path doesn't remove any land from the claim.");
+            visualizeShapedEditState(player, session, clickedBlock.getY());
+            return;
+        }
+
+        CreateClaimResult updateResult = this.dataStore.updateShapedClaim(player, playerData, claim, resultPolygon);
+        if (!updateResult.succeeded || updateResult.claim == null) {
+            if (updateResult.denialMessage != null) {
+                GriefPrevention.sendMessage(player, TextMode.Err, updateResult.denialMessage.get());
+            } else {
+                GriefPrevention.sendMessage(player, TextMode.Err, Messages.CreateClaimFailOverlapRegion);
+            }
+            visualizeShapedEditState(player, session, clickedBlock.getY());
+            return;
+        }
+
+        ClaimEditorSession shapedSession = ClaimEditorSession.idle(playerData.playerID)
+                .withMode(com.griefprevention.claims.editor.ClaimEditorMode.SHAPED, ClaimEditSource.TOOL);
+        playerData.lastClaim = updateResult.claim;
+        playerData.setClaimEditorSession(loadClaimIntoShapedSession(shapedSession, updateResult.claim));
+        GriefPrevention.sendMessage(player, TextMode.Success, "Cut completed! The shaped land has been unclaimed.");
+        BoundaryVisualization.visualizeClaim(player, updateResult.claim,
+                updateResult.claim.isAdminClaim() ? VisualizationType.ADMIN_CLAIM : VisualizationType.CLAIM,
+                clickedBlock);
+    }
+
+    /**
+     * Check if a set of cells is connected using BFS (4-connectivity).
+     */
+    private static boolean isConnectedCells(@NotNull Set<OrthogonalPoint2i> cells) {
+        if (cells.size() <= 1) {
+            return true;
+        }
+
+        Set<OrthogonalPoint2i> visited = new HashSet<>();
+        java.util.Queue<OrthogonalPoint2i> queue = new java.util.LinkedList<>();
+        OrthogonalPoint2i start = cells.iterator().next();
+        queue.add(start);
+        visited.add(start);
+
+        while (!queue.isEmpty()) {
+            OrthogonalPoint2i current = queue.poll();
+            for (int[] dir : new int[][]{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
+                OrthogonalPoint2i neighbor = new OrthogonalPoint2i(current.x() + dir[0], current.z() + dir[1]);
+                if (cells.contains(neighbor) && visited.add(neighbor)) {
+                    queue.add(neighbor);
+                }
+            }
+        }
+
+        return visited.size() == cells.size();
     }
 
     private void visualizeShapedEditState(

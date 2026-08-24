@@ -219,6 +219,7 @@ Messages:
   ResizeFailSubdivision: "Nelze změnit velikost claimu: nové hranice by vyloučily existující subdivizi. Nejprve prosím subdivizi odstraň nebo přesuň."
   ResizeFailSubdivisionExceedsParent: "Nepodařilo se změnit velikost: subdivize nezůstala ve všech stranách uvnitř hranic nadřazeného claimu, což způsobilo konfliktní zónu na hlavním claimu."
   ShapedClaimInteriorClick: Zde nemůžeš začít tvarovaný claim. Můžeš buď začít nový tvarovaný claim, nebo vytvořit segmenty na hranici tvého současného claimu a ty rozšířit.
+  ShapedClaimsCutStarted: "Začíná tvarovaný řez tvého claimu. Pokračuj v tvarování a vrať se k hranici, abys dokončil řez. Varování: řez znamená vzdát se nároku na tuto oblast."
   ShowNearbyClaims: Nalezeno {0} claimů.
   NoChatUntilMove: Promiň, ale než budeš moci chatovat, musíš se trochu pohnout. Máme tu spoustu spambotů. :)
   SetClaimBlocksSuccess: Nastřádané claim bloky aktualizovány.

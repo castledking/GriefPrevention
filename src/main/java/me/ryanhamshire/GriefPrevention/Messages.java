@@ -256,6 +256,7 @@ public enum Messages
     ResizeFailSubdivision("Cannot resize claim: The new boundaries would exclude an existing subdivision. Please remove or move the subdivision first."),
     ResizeFailSubdivisionExceedsParent("Could not resize: Subdivision was not kept within the parent's confines on all sides causing a conflict zone appearance on the main claim."),
     ShapedClaimInteriorClick("You can't start a shaped claim here. You can either start a new shaped claim or make segments on your current claim's boundary and extend those."),
+    ShapedClaimsCutStarted("Starting a shaped cut of your claim. Continue to shape and merge back to a boundary to complete the cut. Warning: cut means to unclaim that shaped land."),
     ShowNearbyClaims("Found {0} land claims.", "0: Number of claims found."),
     NoChatUntilMove("Sorry, but you have to move a little more before you can chat.  We get lots of spam bots here.  :)"),
     SetClaimBlocksSuccess("Updated accrued claim blocks."),

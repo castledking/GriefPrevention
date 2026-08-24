@@ -219,6 +219,7 @@ Messages:
   ResizeFailSubdivision: 'Nie można zmienić rozmiaru terenu: Nowe granice wykluczałyby istniejący podział. Najpierw usuń lub przenieś podział.'
   ResizeFailSubdivisionExceedsParent: 'Nie można zmienić rozmiaru: Podział nie został utrzymany w granicach rodzica ze wszystkich stron, powodując konflikt na głównym terenie.'
   ShapedClaimInteriorClick: Nie możesz rozpocząć terenu o dowolnym kształcie tutaj. Możesz rozpocząć nowy teren lub utworzyć segmenty na granicy obecnego terenu i je rozszerzyć.
+  ShapedClaimsCutStarted: "Rozpoczynanie cięcia kształtu twojego terenu. Kontynuuj formowanie i wróć do granicy, aby zakończyć cięcie. Uwaga: cięcie oznacza rezygnację z ochrony tego terenu."
   ShowNearbyClaims: Znaleziono {0} oznaczonych terenów.
   NoChatUntilMove: Przepraszamy, ale musisz się trochę więcej poruszyć, zanim będziesz mógł pisać na czacie. Mamy tutaj dużo botów spamujących. :)
   SetClaimBlocksSuccess: Zaktualizowano naliczone bloki terenu.

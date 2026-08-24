@@ -219,6 +219,7 @@ Messages:
   ResizeFailSubdivision: '无法调整领地大小：新边界将排除现有子领地。请先移除或移动子领地。'
   ResizeFailSubdivisionExceedsParent: '无法调整大小：子领地未在所有边上保持在父领地边界内，导致主领地上出现冲突区域。'
   ShapedClaimInteriorClick: 你不能在这里开始一个自定义形状领地。你可以开始一个新的自定义形状领地，或在你当前领地的边界上创建分段并扩展它们。
+  ShapedClaimsCutStarted: 开始对你的领地进行自定义形状切割。继续塑形并回到边界以完成切割。警告：切割意味着放弃该形状区域的认领。
   ShowNearbyClaims: 找到 {0} 个领地。
   NoChatUntilMove: 抱歉，你需要再移动一点才能聊天。我们这里有很多垃圾机器人。:)
   SetClaimBlocksSuccess: 已更新累积的领地方块。

@@ -219,6 +219,7 @@ Messages:
   ResizeFailSubdivision: 'Tidak dapat menukar saiz kawasan tuntutan: Sempadan baharu akan mengecualikan subbahagian sedia ada. Sila buang atau pindahkan subbahagian itu dahulu.'
   ResizeFailSubdivisionExceedsParent: 'Tidak dapat menukar saiz: Subbahagian tidak dikekalkan dalam sempadan induknya pada semua sisi, menyebabkan kemunculan zon konflik pada kawasan tuntutan utama.'
   ShapedClaimInteriorClick: Anda tidak boleh memulakan kawasan tuntutan berbentuk di sini. Anda boleh sama ada memulakan kawasan tuntutan berbentuk baharu atau membuat segmen pada sempadan kawasan tuntutan semasa anda dan melanjutkannya.
+  ShapedClaimsCutStarted: "Memulakan potongan berbentuk kawasan tuntutan anda. Teruskan membentuk dan kembali ke sempadan untuk melengkapkan potongan. Amaran: potong bermakna tidak menuntut tanah tersebut."
   ShowNearbyClaims: '{0} kawasan tuntutan tanah ditemui.'
   NoChatUntilMove: 'Maaf, tetapi anda perlu bergerak sedikit lagi sebelum boleh berbual. Kami menerima banyak bot spam di sini. :)'
   SetClaimBlocksSuccess: Blok tuntutan terkumpul telah dikemas kini.

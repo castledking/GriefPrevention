@@ -220,6 +220,7 @@ Messages:
   ResizeFailSubdivision: "Cannot resize claim: The new boundaries would exclude an existin' subdivision. Please remove or move the subdivision first."
   ResizeFailSubdivisionExceedsParent: "Could not resize: Subdivision was not kept within the parent's confines on all sides causin' a conflict zone appearance on the main claim."
   ShapedClaimInteriorClick: "Ye can't start a shaped claim here. Ye can either start a new shaped claim or make segments on yer current claim's boundary and extend those."
+  ShapedClaimsCutStarted: "Startin' a shaped cut of yer claim. Keep shaping and merge back to a boundary to finish the cut. Warning: cut means to unclaim that shaped land, arrr."
   ShowNearbyClaims: "Found {0} land claims, arrr."
   NoChatUntilMove: "Sorry, but ye have to move a little more before ye can chat. We get lots of spam bots here, yarr. :)"
   SetClaimBlocksSuccess: "Updated accrued claim blocks."

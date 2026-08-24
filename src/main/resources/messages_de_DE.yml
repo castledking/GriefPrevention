@@ -219,6 +219,7 @@ Messages:
   ResizeFailSubdivision: "Gebiet kann nicht angepasst werden: Die neuen Grenzen würden eine bestehende Unterteilung ausschließen. Bitte entferne oder verschiebe zuerst die Unterteilung."
   ResizeFailSubdivisionExceedsParent: "Konnte nicht anpassen: Die Unterteilung blieb nicht auf allen Seiten innerhalb der Grenzen des Elterngebiets, was zu einer Konfliktzone auf dem Hauptgebiet führt."
   ShapedClaimInteriorClick: Du kannst hier kein Formgebiet starten. Du kannst entweder ein neues Formgebiet starten oder Segmente an der Grenze deines aktuellen Gebiets erstellen und diese erweitern.
+  ShapedClaimsCutStarted: "Starte einen Formgeschnitt in deinem Gebiet. Setze die Form fort und kehre an eine Grenze zurück, um den Schnitt abzuschließen. Warnung: Schneiden bedeutet, dieses Land nicht mehr zu beanspruchen."
   ShowNearbyClaims: "{0} Landgebiete gefunden."
   NoChatUntilMove: "Entschuldigung, du musst dich noch etwas bewegen, bevor du chatten kannst. Wir haben hier viele Spam-Bots. :)"
   SetClaimBlocksSuccess: Angesammelte Schutzblöcke aktualisiert.

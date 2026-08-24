@@ -219,6 +219,7 @@ Messages:
   ResizeFailSubdivision: 'No se puede redimensionar el terreno: Los nuevos limites excluirian una subdivision existente. Por favor elimina o mueve la subdivision primero.'
   ResizeFailSubdivisionExceedsParent: 'No se pudo redimensionar: La subdivision no se mantuvo dentro de los limites del padre por todos los lados, causando un conflicto en el terreno principal.'
   ShapedClaimInteriorClick: No puedes iniciar un terreno con forma aqui. Puedes iniciar un nuevo terreno con forma o crear segmentos en el borde de tu terreno actual y extenderlos.
+  ShapedClaimsCutStarted: "Iniciando un corte con forma de tu terreno. Continua dando forma y vuelve a un borde para completar el corte. Advertencia: cortar significa desproteger esa tierra."
   ShowNearbyClaims: Se encontraron {0} terrenos protegidos.
   NoChatUntilMove: Lo sentimos, pero tienes que moverte un poco más antes de poder chatear. Recibimos muchos bots de spam aquí. :)
   SetClaimBlocksSuccess: Bloques de protección acumulados actualizados.

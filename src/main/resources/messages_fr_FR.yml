@@ -219,6 +219,7 @@ Messages:
   ResizeFailSubdivision: "Impossible de redimensionner le terrain : les nouvelles limites excluraient une subdivision existante. Veuillez d'abord supprimer ou déplacer la subdivision."
   ResizeFailSubdivisionExceedsParent: "Impossible de redimensionner : la subdivision n'est pas restée dans les limites du parent sur tous les côtés, créant une zone de conflit sur le terrain principal."
   ShapedClaimInteriorClick: "Vous ne pouvez pas commencer un terrain personnalisé ici. Vous pouvez soit en créer un nouveau, soit faire des segments sur la limite de votre terrain actuel et les étendre."
+  ShapedClaimsCutStarted: "Début d'une coupe personnalisée de votre terrain. Continuez à façonner et à revenir à une limite pour terminer la coupe. Attention : une coupe signifie désclaimer cette zone."
   ShowNearbyClaims: "{0} terrains trouvés."
   NoChatUntilMove: "Désolé, vous devez bouger un peu plus avant de pouvoir discuter. Nous recevons beaucoup de bots de spam ici. :)"
   SetClaimBlocksSuccess: Blocs de protection accumulés mis à jour.
