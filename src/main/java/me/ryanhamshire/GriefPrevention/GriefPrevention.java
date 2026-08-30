@@ -4781,14 +4781,21 @@ public class GriefPrevention extends JavaPlugin {
     }
 
     public boolean claimIsPvPSafeZone(Claim claim) {
-        // Check per-claim PvP toggle first (if enabled)
-        if (this.config_pvp_toggleCostClaimEnabled || this.config_pvp_toggleCostSubdivisionEnabled) {
-            if (!claim.pvpEnabled) {
-                return true; // PvP is disabled in this claim
+        // Per-claim PvP toggle: only applies to the claim type the server enabled it for,
+        // mirroring getPvpToggleContext(). When active, the claim's own setting is
+        // authoritative in both directions — OFF protects, and ON overrides any global
+        // "no combat in claims" fallback so toggling PvP on actually enables combat.
+        if (claim.parent == null) {
+            if (this.config_pvp_toggleCostClaimEnabled) {
+                return !claim.pvpEnabled;
+            }
+        } else {
+            if (this.config_pvp_toggleCostSubdivisionEnabled) {
+                return !claim.pvpEnabled;
             }
         }
 
-        // Fall back to global config settings
+        // Toggle feature disabled for this claim type: fall back to global config settings
         return (
             (claim.isAdminClaim() &&
                 claim.parent == null &&
