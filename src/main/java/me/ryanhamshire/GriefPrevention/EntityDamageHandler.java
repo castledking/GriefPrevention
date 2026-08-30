@@ -528,9 +528,12 @@ public class EntityDamageHandler implements Listener {
         // FEATURE: prevent players from engaging in PvP combat inside land claims (when
         // it's disabled)
         // Ignoring claims bypasses this feature.
+        boolean perClaimToggleEnabled = instance.config_pvp_toggleCostClaimEnabled
+                || instance.config_pvp_toggleCostSubdivisionEnabled;
         if (attackerData.ignoreClaims
-                || !instance.config_pvp_noCombatInPlayerLandClaims
-                        && !instance.config_pvp_noCombatInAdminLandClaims) {
+                || !perClaimToggleEnabled
+                        && !instance.config_pvp_noCombatInPlayerLandClaims
+                                && !instance.config_pvp_noCombatInAdminLandClaims) {
             return false;
         }
         Consumer<Messages> cancelHandler = message -> {
