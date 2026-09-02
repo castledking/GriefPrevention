@@ -1678,6 +1678,7 @@ public abstract class DataStore {
         if ("INHERIT".equalsIgnoreCase(GriefPrevention.instance.config_pvp_subdivisionPvpState))
         {
             newClaim.pvpEnabled = parent.pvpEnabled;
+            newClaim.pvpToggleSet = parent.pvpToggleSet;
         }
 
         if (!containsChild(parent, newClaim))
@@ -1866,6 +1867,7 @@ public abstract class DataStore {
 
         if (parent != null && "INHERIT".equalsIgnoreCase(GriefPrevention.instance.config_pvp_subdivisionPvpState)) {
             newClaim.pvpEnabled = parent.pvpEnabled;
+            newClaim.pvpToggleSet = parent.pvpToggleSet;
         }
 
         // Never allow nested subdivisions when disabled, regardless of caller path.

@@ -9,7 +9,7 @@ import org.jetbrains.annotations.ApiStatus;
 public final class ClaimDataSchema
 {
     /** Matches the current upstream flat-file/database schema version. */
-    public static final int CURRENT_VERSION = 13;
+    public static final int CURRENT_VERSION = 14;
 
     private ClaimDataSchema()
     {

@@ -4782,16 +4782,22 @@ public class GriefPrevention extends JavaPlugin {
 
     public boolean claimIsPvPSafeZone(Claim claim) {
         // Per-claim PvP toggle: only applies to the claim type the server enabled it for,
-        // mirroring getPvpToggleContext(). When active, the claim's own setting is
-        // authoritative in both directions — OFF protects, and ON overrides any global
-        // "no combat in claims" fallback so toggling PvP on actually enables combat.
+        // mirroring getPvpToggleContext(). When active AND the claim was explicitly toggled,
+        // its own setting is authoritative in both directions — OFF protects, and ON overrides
+        // any global "no combat in claims" fallback so toggling PvP on actually enables combat.
+        // Claims never toggled keep their default pvpEnabled and always fall back to the global
+        // settings below (in particular admin claims must not silently enable PvP by default).
         if (claim.parent == null) {
             if (this.config_pvp_toggleCostClaimEnabled) {
-                return !claim.pvpEnabled;
+                if (claim.pvpToggleSet) {
+                    return !claim.pvpEnabled;
+                }
             }
         } else {
             if (this.config_pvp_toggleCostSubdivisionEnabled) {
-                return !claim.pvpEnabled;
+                if (claim.pvpToggleSet) {
+                    return !claim.pvpEnabled;
+                }
             }
         }
 
@@ -5943,7 +5949,9 @@ public class GriefPrevention extends JavaPlugin {
             return true;
         }
 
-        if (!claim.hasExplicitPermission(player, ClaimPermission.Edit)) {
+        // Admin claims have no owner, so hasExplicitPermission can never pass there. Use the
+        // claim permission check which lets griefprevention.adminclaims (and ops) modify them.
+        if (claim.checkPermission(player, ClaimPermission.Edit, null) != null) {
             clearPendingPvpToggle(playerData);
             GriefPrevention.sendMessage(player, TextMode.Err, Messages.NoPermissionForCommand);
             return true;
@@ -5981,7 +5989,9 @@ public class GriefPrevention extends JavaPlugin {
             return true;
         }
 
-        if (!claim.hasExplicitPermission(player, ClaimPermission.Edit)) {
+        // Admin claims have no owner, so hasExplicitPermission can never pass there. Use the
+        // claim permission check which lets griefprevention.adminclaims (and ops) modify them.
+        if (claim.checkPermission(player, ClaimPermission.Edit, null) != null) {
             GriefPrevention.sendMessage(player, TextMode.Err, Messages.NoPermissionForCommand);
             return true;
         }
@@ -6018,7 +6028,10 @@ public class GriefPrevention extends JavaPlugin {
             return true;
         }
 
-        if (claim.pvpEnabled == toggleTo) {
+        // Only report an already-toggled state when the claim has been explicitly toggled to it.
+        // A still-default claim (pvpToggleSet == false) with a matching pvpEnabled still needs
+        // the toggle applied to become an explicit, persisted override in either direction.
+        if (claim.pvpToggleSet && claim.pvpEnabled == toggleTo) {
             GriefPrevention.sendMessage(
                 player,
                 TextMode.Instr,
@@ -6034,6 +6047,7 @@ public class GriefPrevention extends JavaPlugin {
         }
 
         claim.pvpEnabled = toggleTo;
+        claim.pvpToggleSet = true;
         this.dataStore.saveClaim(claim);
         clearPendingPvpToggle(playerData);
         sendPvpToggleSuccess(player, toggleTo, toggleContext, claimTypeLabel);

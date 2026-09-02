@@ -559,6 +559,9 @@ public class FlatFileDataStore extends DataStore
     // Carried through the shared claim codec as an unknown field so subdivision admin status
     // survives round trips without changing the cross-platform document schema.
     private static final String ADMIN_SUBDIVISION_FIELD = "Admin Subdivision";
+    // Marks a claim whose pvpEnabled was explicitly toggled rather than left at its default.
+    // Parked in the cross-platform document's extras so it survives claim moves.
+    private static final String PVP_TOGGLE_SET_FIELD = "PvP Toggle Set";
 
     private List<String> serializeShapeCorners(@NotNull Claim claim)
     {
@@ -654,6 +657,7 @@ public class FlatFileDataStore extends DataStore
         claim.areExplosivesAllowed = explosivesAllowed;
         claim.areWitherExplosionsAllowed = witherExplosionsAllowed;
         claim.pvpEnabled = pvpEnabled;
+        claim.pvpToggleSet = yaml.getBoolean(PVP_TOGGLE_SET_FIELD, false);
         claim.alertsEnabled = yaml.getBoolean("Alerts Enabled", true);
         claim.setInheritNothingForNewSubdivisions(inheritNothingForNewSubdivisions);
         claim.setShapedCorners(parseShapeCorners(yaml.getStringList("Shape Corners")));
@@ -752,6 +756,7 @@ public class FlatFileDataStore extends DataStore
         child.areExplosivesAllowed = explosivesAllowed;
         child.areWitherExplosionsAllowed = witherExplosionsAllowed;
         child.pvpEnabled = pvpEnabled;
+        child.pvpToggleSet = section.getBoolean(PVP_TOGGLE_SET_FIELD, false);
         child.alertsEnabled = section.getBoolean("Alerts Enabled", true);
         child.setInheritNothingForNewSubdivisions(
                 section.getBoolean("inheritNothingForNewSubdivisions", false)
@@ -915,6 +920,14 @@ public class FlatFileDataStore extends DataStore
         {
             extraFields.remove(ADMIN_SUBDIVISION_FIELD);
         }
+        if (claim.pvpToggleSet)
+        {
+            extraFields.put(PVP_TOGGLE_SET_FIELD, Boolean.TRUE);
+        }
+        else
+        {
+            extraFields.remove(PVP_TOGGLE_SET_FIELD);
+        }
         ClaimDocument document = new ClaimDocument(
                 persistedSnapshot,
                 trust,
@@ -1003,6 +1016,10 @@ public class FlatFileDataStore extends DataStore
         section.set("Explosives Allowed", claim.areExplosivesAllowed);
         section.set("Wither Explosions Allowed", claim.areWitherExplosionsAllowed);
         section.set("PvP Enabled", claim.pvpEnabled);
+        if (claim.pvpToggleSet)
+        {
+            section.set(PVP_TOGGLE_SET_FIELD, true);
+        }
         section.set("Alerts Enabled", claim.alertsEnabled);
         section.set("Modified Date", claim.modifiedDate != null ? claim.modifiedDate.getTime() : System.currentTimeMillis());
 

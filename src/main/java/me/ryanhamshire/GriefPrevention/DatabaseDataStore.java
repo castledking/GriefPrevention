@@ -58,9 +58,9 @@ public class DatabaseDataStore extends DataStore
     // initialize(). This has to list the full current column set or the first claim insert fails
     // against columns that were never added.
     static final String SQL_CREATE_CLAIM_TABLE =
-            "CREATE TABLE IF NOT EXISTS griefprevention_claimdata (id INTEGER, owner VARCHAR(50), lessercorner VARCHAR(100), greatercorner VARCHAR(100), builders TEXT, containers TEXT, accessors TEXT, managers TEXT, denied TEXT, inheritnothing BOOLEAN, parentid INTEGER, expiration BIGINT, explosivesallowed BOOLEAN, inheritnothingfornewsubdivisions BOOLEAN, witherexplosionsallowed BOOLEAN, is3d BOOLEAN DEFAULT 0, shapecorners TEXT, modifieddate BIGINT DEFAULT 0, pvpenabled BOOLEAN DEFAULT 1, alertsenabled BOOLEAN DEFAULT 1, adminsubdivision BOOLEAN DEFAULT 0, pvptrusted TEXT, pvetrusted TEXT)";
+            "CREATE TABLE IF NOT EXISTS griefprevention_claimdata (id INTEGER, owner VARCHAR(50), lessercorner VARCHAR(100), greatercorner VARCHAR(100), builders TEXT, containers TEXT, accessors TEXT, managers TEXT, denied TEXT, inheritnothing BOOLEAN, parentid INTEGER, expiration BIGINT, explosivesallowed BOOLEAN, inheritnothingfornewsubdivisions BOOLEAN, witherexplosionsallowed BOOLEAN, is3d BOOLEAN DEFAULT 0, shapecorners TEXT, modifieddate BIGINT DEFAULT 0, pvpenabled BOOLEAN DEFAULT 1, alertsenabled BOOLEAN DEFAULT 1, adminsubdivision BOOLEAN DEFAULT 0, pvptrusted TEXT, pvetrusted TEXT, pvptoggled BOOLEAN DEFAULT 0)";
     static final String SQL_INSERT_CLAIM =
-            "INSERT INTO griefprevention_claimdata (id, owner, lessercorner, greatercorner, builders, containers, accessors, managers, denied, inheritnothing, inheritnothingfornewsubdivisions, parentid, expiration, explosivesallowed, witherexplosionsallowed, is3d, shapecorners, modifieddate, pvpenabled, alertsenabled, adminsubdivision, pvptrusted, pvetrusted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            "INSERT INTO griefprevention_claimdata (id, owner, lessercorner, greatercorner, builders, containers, accessors, managers, denied, inheritnothing, inheritnothingfornewsubdivisions, parentid, expiration, explosivesallowed, witherexplosionsallowed, is3d, shapecorners, modifieddate, pvpenabled, alertsenabled, adminsubdivision, pvptrusted, pvetrusted, pvptoggled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     private static final String SQL_DELETE_CLAIM =
             "DELETE FROM griefprevention_claimdata WHERE id = ?";
     private static final String SQL_SELECT_PLAYER_DATA =
@@ -365,6 +365,12 @@ public class DatabaseDataStore extends DataStore
             this.addClaimColumnIfMissing(statement, "pvetrusted", "TEXT");
         }
 
+        if (this.getSchemaVersion() <= 14)
+        {
+            // Marks claims whose PvP state was explicitly toggled (rather than left at default).
+            this.addClaimColumnIfMissing(statement, "pvptoggled", "BOOLEAN DEFAULT 0");
+        }
+
         //load claims data into memory
 
         results = statement.executeQuery("SELECT * FROM griefprevention_claimdata");
@@ -488,6 +494,12 @@ public class DatabaseDataStore extends DataStore
                 } catch (SQLException e) {
                     adminSubdivision = false; // Default if column doesn't exist
                 }
+                boolean pvpToggleSet;
+                try {
+                    pvpToggleSet = results.getBoolean("pvptoggled");
+                } catch (SQLException e) {
+                    pvpToggleSet = false; // Default if column doesn't exist
+                }
                 List<String> pvpTrusted;
                 try {
                     pvpTrusted = parseStorageList(results.getString("pvptrusted"));
@@ -508,6 +520,7 @@ public class DatabaseDataStore extends DataStore
                 claim.areExplosivesAllowed = explosivesAllowed;
                 claim.areWitherExplosionsAllowed = witherExplosionsAllowed;
                 claim.pvpEnabled = pvpEnabled;
+                claim.pvpToggleSet = pvpToggleSet;
                 claim.alertsEnabled = alertsEnabled;
                 claim.setInheritNothingForNewSubdivisions(inheritNothingForNewSubdivisions);
                 claim.setShapedCorners(parseCornersFromDb(shapecornersStr));
@@ -660,6 +673,7 @@ public class DatabaseDataStore extends DataStore
             insertStmt.setBoolean(21, claim.isAdminSubdivision());
             insertStmt.setString(22, this.storageStringBuilder(new ArrayList<>(claim.getPvpTrustedIdentifiers())));
             insertStmt.setString(23, this.storageStringBuilder(new ArrayList<>(claim.getPveTrustedIdentifiers())));
+            insertStmt.setBoolean(24, claim.pvpToggleSet);
             insertStmt.executeUpdate();
         }
         catch (SQLException e)

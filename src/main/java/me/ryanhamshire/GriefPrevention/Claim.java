@@ -121,6 +121,11 @@ public class Claim
       // PvP toggle for this claim
       public boolean pvpEnabled = true;
 
+      // Whether pvpEnabled was explicitly toggled by a player rather than left at its default.
+      // Claims that never had the toggle applied follow the global PvP config settings instead
+      // of being treated as an explicit override in either direction.
+      public boolean pvpToggleSet = false;
+
       // per-claim alert toggle
       public boolean alertsEnabled = true;
  
